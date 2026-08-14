@@ -17,6 +17,9 @@ import { meRoutes } from "./modules/portal/me.routes.js";
 import { packagesRoutes } from "./modules/packages/packages.routes.js";
 import { loyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
 import { paymentsRoutes } from "./modules/payments/payments.routes.js";
+import { productsRoutes } from "./modules/products/products.routes.js";
+import { ordersRoutes } from "./modules/orders/orders.routes.js";
+import { reviewsRoutes } from "./modules/reviews/reviews.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -44,9 +47,12 @@ export function buildApp() {
   app.register(packagesRoutes);
   app.register(loyaltyRoutes);
   app.register(paymentsRoutes);
+  app.register(productsRoutes);
+  app.register(ordersRoutes);
+  app.register(reviewsRoutes);
 
-  // Mini e-commerce (produtos/pedidos), avaliações e dashboards entram nas
-  // próximas fases — ver docs/ARQUITETURA.md seção 04.
+  // Dashboards de agendamento/financeiro entram na próxima fase — ver
+  // docs/ARQUITETURA.md seção 04.
 
   return app;
 }

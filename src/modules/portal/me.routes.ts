@@ -18,6 +18,8 @@ import {
 } from "./me.service.js";
 import { listClientPackages } from "../packages/client-packages.service.js";
 import { getLoyaltySummary } from "../loyalty/loyalty.service.js";
+import { createReviewSchema } from "../reviews/reviews.schema.js";
+import { createReview } from "../reviews/reviews.service.js";
 
 /** Todas as rotas aqui exigem sessão de cliente (OTP) — o hook vale só para este encapsulamento. */
 export async function meRoutes(app: FastifyInstance) {
@@ -61,5 +63,11 @@ export async function meRoutes(app: FastifyInstance) {
 
   app.get("/me/loyalty", async (request) => {
     return getLoyaltySummary(request.authClient!.sub);
+  });
+
+  app.post<{ Params: { id: string } }>("/me/appointments/:id/review", async (request, reply) => {
+    const body = createReviewSchema.parse(request.body);
+    const review = await createReview(request.authClient!.sub, request.params.id, body);
+    reply.code(201).send(review);
   });
 }

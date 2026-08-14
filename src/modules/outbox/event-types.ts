@@ -1,7 +1,7 @@
 /**
- * Catálogo de eventos (docs/ARQUITETURA.md §02). Só os que o sistema hoje
- * consegue de fato emitir — payment.*, order.*, product.*, loyalty.*,
- * review.* chegam junto com as tabelas de financeiro/loja/fidelidade.
+ * Catálogo de eventos (docs/ARQUITETURA.md §02). payment.*, order.* e
+ * product.low_stock ainda não são emitidos como eventos de webhook — as
+ * tabelas existem, mas nada os dispara ainda; ver docs/ARQUITETURA.md §04.
  */
 export const APPOINTMENT_EVENT = {
   CREATED: "appointment.created",
@@ -24,4 +24,13 @@ export const NOTIFICATION_EVENT = {
   DUE: "notification.due",
 } as const;
 
-export const ALL_EVENT_TYPES: string[] = [...Object.values(APPOINTMENT_EVENT), ...Object.values(NOTIFICATION_EVENT)];
+/** Disparado quando um cliente avalia um atendimento concluído. */
+export const REVIEW_EVENT = {
+  SUBMITTED: "review.submitted",
+} as const;
+
+export const ALL_EVENT_TYPES: string[] = [
+  ...Object.values(APPOINTMENT_EVENT),
+  ...Object.values(NOTIFICATION_EVENT),
+  ...Object.values(REVIEW_EVENT),
+];

@@ -64,6 +64,8 @@ model Client {
   notifications   Notification[]
   clientPackages  ClientPackage[]
   loyaltyEntries  LoyaltyEntry[]
+  orders          Order[]
+  reviews         Review[]
 
   @@index([shopId])
   @@map("clients")
@@ -93,6 +95,7 @@ model Barber {
   scheduleExceptions ScheduleException[]
   appointments       Appointment[]
   preferredByClients Client[]           @relation("PreferredBarber")
+  reviews            Review[]
 
   @@index([shopId])
   @@map("barbers")
@@ -276,6 +279,8 @@ model Appointment {
   statusHistory AppointmentStatusHistory[]
   payments      Payment[]
   packageCreditEntries PackageCreditEntry[]
+  orders        Order[]
+  review        Review?
 
   @@index([shopId])
   @@index([barberId, startsAt])
@@ -484,6 +489,7 @@ model Payment {
   shopId          String        @default("default") @map("shop_id")
   appointmentId   String?       @map("appointment_id")
   clientPackageId String?       @map("client_package_id")
+  orderId         String?       @map("order_id")
   amountCents     Int           @map("amount_cents")
   method          PaymentMethod
   status          PaymentStatus @default(PAID)
@@ -493,9 +499,11 @@ model Payment {
 
   appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
   clientPackage ClientPackage? @relation(fields: [clientPackageId], references: [id])
+  order         Order?         @relation(fields: [orderId], references: [id])
 
   @@index([appointmentId])
   @@index([clientPackageId])
+  @@index([orderId])
   @@index([shopId, createdAt])
   @@map("payments")
 }
@@ -587,4 +595,146 @@ model LoyaltyEntry {
   @@index([clientId, createdAt])
   @@index([shopId])
   @@map("loyalty_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Mini e-commerce (loja integrada)
+// ---------------------------------------------------------------------------
+//
+// stockQty é cache de SUM(stock_movements.delta), atualizado na MESMA
+// transação de cada movimento — nunca escrito solto. Débito por venda usa
+// SELECT ... FOR UPDATE (mesmo raciocínio do crédito de pacote) para duas
+// vendas simultâneas da última unidade não venderem em dobro.
+
+model Product {
+  id             String   @id @default(cuid())
+  shopId         String   @default("default") @map("shop_id")
+  sku            String?  @unique
+  name           String
+  description    String?
+  specs          Json?
+  costPriceCents Int      @map("cost_price_cents")
+  salePriceCents Int      @map("sale_price_cents")
+  stockQty       Int      @default(0) @map("stock_qty")
+  minStock       Int      @default(0) @map("min_stock")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  images         ProductImage[]
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+
+  @@index([shopId])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  url       String
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+enum StockMovementReason {
+  PURCHASE_IN
+  SALE
+  ADJUSTMENT
+  LOSS
+  RETURN
+}
+
+model StockMovement {
+  id        String               @id @default(cuid())
+  productId String               @map("product_id")
+  delta     Int
+  reason    StockMovementReason
+  refType   String?              @map("ref_type")
+  refId     String?              @map("ref_id")
+  notes     String?
+  createdAt DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId, createdAt])
+  @@map("stock_movements")
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+// appointmentId é opcional: dá pra vender produto avulso no balcão ou
+// vinculado à visita de um atendimento (mesmo raciocínio do doc original).
+model Order {
+  id            String      @id @default(cuid())
+  shopId        String      @default("default") @map("shop_id")
+  clientId      String?     @map("client_id")
+  appointmentId String?     @map("appointment_id")
+  status        OrderStatus @default(PAID)
+  totalCents    Int         @map("total_cents")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  client      Client?      @relation(fields: [clientId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
+  items       OrderItem[]
+  payments    Payment[]
+
+  @@index([clientId])
+  @@index([shopId, createdAt])
+  @@map("orders")
+}
+
+// Preço E custo congelados na venda — reajuste de tabela depois não pode
+// reescrever a margem do que já foi vendido (mesma decisão de
+// appointment_items para serviços).
+model OrderItem {
+  id            String @id @default(cuid())
+  orderId       String @map("order_id")
+  productId     String @map("product_id")
+  qty           Int
+  unitPriceCents Int   @map("unit_price_cents")
+  unitCostCents  Int   @map("unit_cost_cents")
+  position      Int    @default(0)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// ---------------------------------------------------------------------------
+// Avaliações
+// ---------------------------------------------------------------------------
+
+// Uma avaliação por atendimento (não por barbeiro) — é isso que permite
+// liberar o review só depois de CONCLUIDO, e evita nota "solta" sem visita.
+model Review {
+  id            String   @id @default(cuid())
+  shopId        String   @default("default") @map("shop_id")
+  appointmentId String   @unique @map("appointment_id")
+  clientId      String   @map("client_id")
+  barberId      String   @map("barber_id")
+  rating        Int
+  comment       String?
+  publishedAt   DateTime @default(now()) @map("published_at") @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  client      Client      @relation(fields: [clientId], references: [id])
+  barber      Barber      @relation(fields: [barberId], references: [id])
+
+  @@index([barberId])
+  @@index([shopId])
+  @@map("reviews")
 }
