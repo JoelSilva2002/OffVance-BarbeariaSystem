@@ -8,6 +8,8 @@ import { schedulingRoutes } from "./modules/scheduling/scheduling.routes.js";
 import { appointmentsRoutes } from "./modules/appointments/appointments.routes.js";
 import { barbersRoutes } from "./modules/barbers/barbers.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
+import { webhookEndpointsRoutes } from "./modules/outbox/webhook-endpoints.routes.js";
+import { eventsRoutes } from "./modules/outbox/events.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -26,9 +28,10 @@ export function buildApp() {
   app.register(catalogRoutes);
   app.register(schedulingRoutes);
   app.register(appointmentsRoutes);
+  app.register(webhookEndpointsRoutes);
+  app.register(eventsRoutes);
 
-  // Ciclo de vida do agendamento (confirmar/cancelar/concluir), portal do
-  // cliente e demais módulos entram nas próximas fases — ver
+  // Portal do cliente e financeiro/loja entram nas próximas fases — ver
   // docs/ARQUITETURA.md seção 04.
 
   return app;

@@ -6,6 +6,9 @@ import { getShopSettings } from "../scheduling/shop-settings.service.js";
 import { isExclusionViolation, lockBarberDay } from "./concurrency.js";
 import { validateSlot } from "./slot-validation.js";
 import type { RescheduleInput } from "./lifecycle.schema.js";
+import { recordAppointmentEvent } from "../outbox/outbox.recorder.js";
+import { APPOINTMENT_EVENT } from "../outbox/event-types.js";
+import { appointmentEventPayload } from "../outbox/appointment-payload.js";
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -53,6 +56,7 @@ export async function confirmAppointment(id: string, actorType: ActorType, actor
     if (appointment.status !== CONFIRMABLE_FROM) invalidTransition(appointment.status, "confirmar");
     const updated = await tx.appointment.update({ where: { id }, data: { status: "CONFIRMADO" } });
     await recordTransition(tx, id, appointment.status, "CONFIRMADO", actorType, actorId, null);
+    await recordAppointmentEvent(tx, APPOINTMENT_EVENT.CONFIRMED, id, appointmentEventPayload(updated));
     return updated;
   });
 }
@@ -82,6 +86,7 @@ export async function completeAppointment(
       data: { status: "CONCLUIDO", internalNotes: internalNotes ?? appointment.internalNotes },
     });
     await recordTransition(tx, id, appointment.status, "CONCLUIDO", actorType, actorId, null);
+    await recordAppointmentEvent(tx, APPOINTMENT_EVENT.COMPLETED, id, appointmentEventPayload(updated));
     return updated;
     // Registro de pagamento, crédito de pontos e recibo entram quando as
     // tabelas de financeiro/fidelidade existirem (fase 5).
@@ -110,6 +115,12 @@ export async function cancelAppointment(id: string, actorType: ActorType, actorI
       data: { status: "CANCELADO", cancelledAt: new Date(), cancelReason: reason, cancelledBy: actorId ?? actorType },
     });
     await recordTransition(tx, id, appointment.status, "CANCELADO", actorType, actorId, reason);
+    await recordAppointmentEvent(
+      tx,
+      APPOINTMENT_EVENT.CANCELLED,
+      id,
+      appointmentEventPayload(updated, { reason: reason ?? null }),
+    );
     return updated;
     // Estorno de crédito de pacote entra quando a tabela existir (fase 5).
   });
@@ -121,6 +132,7 @@ export async function markNoShow(id: string, actorType: ActorType, actorId?: str
     if (appointment.status !== NO_SHOWABLE_FROM) invalidTransition(appointment.status, "marcar falta em");
     const updated = await tx.appointment.update({ where: { id }, data: { status: "NAO_COMPARECEU" } });
     await recordTransition(tx, id, appointment.status, "NAO_COMPARECEU", actorType, actorId, reason);
+    await recordAppointmentEvent(tx, APPOINTMENT_EVENT.NO_SHOW, id, appointmentEventPayload(updated));
     return updated;
   });
 }
@@ -192,6 +204,13 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput) 
           input.actorType,
           input.actorId,
           `Remarcado de ${oldStartsAt.toISOString()} para ${newStartsAt.toISOString()}${barberChanged ? " (barbeiro alterado)" : ""}`,
+        );
+
+        await recordAppointmentEvent(
+          tx,
+          APPOINTMENT_EVENT.RESCHEDULED,
+          id,
+          appointmentEventPayload(updated, { previousStartsAt: oldStartsAt.toISOString() }),
         );
 
         return updated;

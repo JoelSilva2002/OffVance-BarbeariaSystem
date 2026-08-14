@@ -315,3 +315,70 @@ model AppointmentItem {
   @@index([appointmentId])
   @@map("appointment_items")
 }
+
+// ---------------------------------------------------------------------------
+// Integração — outbox transacional + webhooks (n8n e afins)
+// ---------------------------------------------------------------------------
+
+// Padrão outbox: o evento é gravado NA MESMA transação da mudança que o
+// originou. Ou os dois existem, ou nenhum — nunca "mudou mas não avisou".
+model OutboxEvent {
+  id            String    @id @default(cuid())
+  shopId        String    @default("default") @map("shop_id")
+  aggregateType String    @map("aggregate_type")
+  aggregateId   String    @map("aggregate_id")
+  eventType     String    @map("event_type")
+  payload       Json
+  occurredAt    DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(3)
+
+  deliveries WebhookDelivery[]
+
+  @@index([shopId, occurredAt])
+  @@index([publishedAt])
+  @@index([eventType, occurredAt])
+  @@map("outbox_events")
+}
+
+model WebhookEndpoint {
+  id                  String   @id @default(cuid())
+  shopId              String   @default("default") @map("shop_id")
+  url                 String
+  secret              String
+  subscribedEvents    String[] @map("subscribed_events")
+  active              Boolean  @default(true)
+  consecutiveFailures Int      @default(0) @map("consecutive_failures")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  deliveries WebhookDelivery[]
+
+  @@index([shopId])
+  @@map("webhook_endpoints")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  ABANDONED
+}
+
+model WebhookDelivery {
+  id                String                @id @default(cuid())
+  outboxEventId     String                @map("outbox_event_id")
+  webhookEndpointId String                @map("webhook_endpoint_id")
+  status            WebhookDeliveryStatus @default(PENDING)
+  responseCode      Int?                  @map("response_code")
+  attempts          Int                   @default(0)
+  nextRetryAt       DateTime              @map("next_retry_at") @db.Timestamptz(3)
+  lastAttemptAt     DateTime?             @map("last_attempt_at") @db.Timestamptz(3)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  outboxEvent     OutboxEvent     @relation(fields: [outboxEventId], references: [id], onDelete: Cascade)
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt])
+  @@index([outboxEventId])
+  @@map("webhook_deliveries")
+}
