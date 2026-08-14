@@ -20,6 +20,7 @@ import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 import { productsRoutes } from "./modules/products/products.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
 import { reviewsRoutes } from "./modules/reviews/reviews.routes.js";
+import { reportsRoutes } from "./modules/reports/reports.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -50,9 +51,7 @@ export function buildApp() {
   app.register(productsRoutes);
   app.register(ordersRoutes);
   app.register(reviewsRoutes);
-
-  // Dashboards de agendamento/financeiro entram na próxima fase — ver
-  // docs/ARQUITETURA.md seção 04.
+  app.register(reportsRoutes);
 
   return app;
 }
