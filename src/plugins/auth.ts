@@ -69,3 +69,16 @@ export async function requireAdminAuth(request: FastifyRequest, _reply: FastifyR
   }
   request.authStaff = payload;
 }
+
+/**
+ * Escopo por barbeiro: ADMIN passa sempre; BARBER só passa se `targetBarberId`
+ * for o dele mesmo. Chamar depois de requireStaffAuth já ter populado
+ * request.authStaff. Mensagem propositalmente vaga — não confirma nem nega
+ * que o recurso existe, só que este token não pode vê-lo.
+ */
+export function assertBarberScope(staff: StaffTokenPayload, targetBarberId: string) {
+  if (staff.role === "ADMIN") return;
+  if (staff.barberId !== targetBarberId) {
+    throw new Problem(403, "FORBIDDEN", "Você só pode acessar informações da sua própria agenda.");
+  }
+}

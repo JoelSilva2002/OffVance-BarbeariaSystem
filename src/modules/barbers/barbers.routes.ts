@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { requireAdminAuth, requireStaffAuth } from "../../plugins/auth.js";
+import { assertBarberScope, requireAdminAuth, requireStaffAuth } from "../../plugins/auth.js";
 import {
   agendaQuerySchema,
   createBarberSchema,
@@ -61,10 +61,13 @@ export async function barbersRoutes(app: FastifyInstance) {
     },
   );
 
+  // Grade/folga/agenda são operacionais, mas escopadas: um BARBER só mexe
+  // na própria (ADMIN não tem essa restrição).
   app.get<{ Params: { id: string } }>(
     "/barbers/:id/schedule",
     { preHandler: requireStaffAuth },
     async (request) => {
+      assertBarberScope(request.authStaff!, request.params.id);
       return { schedule: await getSchedule(request.params.id) };
     },
   );
@@ -73,6 +76,7 @@ export async function barbersRoutes(app: FastifyInstance) {
     "/barbers/:id/schedule",
     { preHandler: requireStaffAuth },
     async (request) => {
+      assertBarberScope(request.authStaff!, request.params.id);
       const body = putScheduleSchema.parse(request.body);
       return { schedule: await putSchedule(request.params.id, body) };
     },
@@ -82,6 +86,7 @@ export async function barbersRoutes(app: FastifyInstance) {
     "/barbers/:id/time-off",
     { preHandler: requireStaffAuth },
     async (request, reply) => {
+      assertBarberScope(request.authStaff!, request.params.id);
       const body = timeOffSchema.parse(request.body);
       const result = await createTimeOff(request.params.id, body);
       reply.code(201).send(result);
@@ -92,6 +97,7 @@ export async function barbersRoutes(app: FastifyInstance) {
     "/barbers/:id/agenda",
     { preHandler: requireStaffAuth },
     async (request) => {
+      assertBarberScope(request.authStaff!, request.params.id);
       const query = agendaQuerySchema.parse(request.query);
       return getAgenda(request.params.id, query.date);
     },

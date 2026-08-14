@@ -26,8 +26,8 @@ async function staffToken(): Promise<string> {
     body: JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD }),
   });
   if (!res.ok) throw new Error(`Login de equipe falhou (${res.status}) — rode \`pnpm db:seed\` antes do teste.`);
-  const { token } = await res.json();
-  return token;
+  const { accessToken } = await res.json();
+  return accessToken;
 }
 
 function nextWeekdayAt(hour: number): DateTime {

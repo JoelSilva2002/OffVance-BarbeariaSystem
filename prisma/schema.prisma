@@ -39,9 +39,29 @@ model User {
 
   client  Client?
   barber  Barber?
+  refreshTokens RefreshToken[]
 
   @@index([shopId])
   @@map("users")
+}
+
+// Sessão de equipe com rotação: cada uso troca o token por um novo e
+// revoga o anterior (replacedById encadeia o histórico). Reapresentar um
+// token já revogado é sinal de roubo — vira gatilho para revogar todos os
+// tokens ativos do usuário (ver staff-auth.service.ts).
+model RefreshToken {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  replacedById String?   @map("replaced_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 model Client {
