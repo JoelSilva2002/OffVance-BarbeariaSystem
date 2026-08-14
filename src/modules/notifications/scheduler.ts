@@ -47,8 +47,13 @@ export async function cancelReminder(tx: Prisma.TransactionClient, appointmentId
   });
 }
 
-/** "Recibo/notificação de pagamento após a conclusão" — usa o total já congelado no agendamento. */
-export async function scheduleReceipt(tx: Prisma.TransactionClient, appointment: Appointment) {
+/** "Recibo/notificação de pagamento após a conclusão" — usa o que foi de fato cobrado (pode ser menor que o total, com pacote/pontos). */
+export async function scheduleReceipt(
+  tx: Prisma.TransactionClient,
+  appointment: Appointment,
+  amountPaidCents: number,
+  paymentMethod: string,
+) {
   if (!appointment.clientId) return;
 
   await tx.notification.upsert({
@@ -61,7 +66,8 @@ export async function scheduleReceipt(tx: Prisma.TransactionClient, appointment:
       payload: {
         appointmentId: appointment.id,
         code: appointment.code,
-        totalPriceCents: appointment.totalPriceCents,
+        amountPaidCents,
+        paymentMethod,
       },
       scheduledFor: new Date(),
       dedupKey: `receipt:${appointment.id}`,

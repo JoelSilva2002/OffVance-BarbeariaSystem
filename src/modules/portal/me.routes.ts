@@ -16,6 +16,8 @@ import {
   rescheduleMyAppointment,
   updateMe,
 } from "./me.service.js";
+import { listClientPackages } from "../packages/client-packages.service.js";
+import { getLoyaltySummary } from "../loyalty/loyalty.service.js";
 
 /** Todas as rotas aqui exigem sessão de cliente (OTP) — o hook vale só para este encapsulamento. */
 export async function meRoutes(app: FastifyInstance) {
@@ -51,5 +53,13 @@ export async function meRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>("/me/appointments/:id/reschedule", async (request) => {
     const body = rescheduleMyAppointmentSchema.parse(request.body);
     return rescheduleMyAppointment(request.authClient!.sub, request.params.id, body);
+  });
+
+  app.get("/me/packages", async (request) => {
+    return { packages: await listClientPackages(request.authClient!.sub) };
+  });
+
+  app.get("/me/loyalty", async (request) => {
+    return getLoyaltySummary(request.authClient!.sub);
   });
 }

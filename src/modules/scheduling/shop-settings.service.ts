@@ -23,5 +23,7 @@ export async function getShopSettings(db: Client = prisma) {
     cancelDeadlineHours: 2,
     rescheduleDeadlineHours: 2,
     autoConfirmHoursBefore: 24,
+    loyaltyPointsPerCurrency: 1,
+    loyaltyPointValueCents: 5,
   };
 }

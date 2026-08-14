@@ -14,6 +14,9 @@ import { eventsRoutes } from "./modules/outbox/events.routes.js";
 import { notificationsRoutes } from "./modules/notifications/notifications.routes.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { meRoutes } from "./modules/portal/me.routes.js";
+import { packagesRoutes } from "./modules/packages/packages.routes.js";
+import { loyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
+import { paymentsRoutes } from "./modules/payments/payments.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -38,9 +41,12 @@ export function buildApp() {
   app.register(notificationsRoutes);
   app.register(authRoutes);
   app.register(meRoutes);
+  app.register(packagesRoutes);
+  app.register(loyaltyRoutes);
+  app.register(paymentsRoutes);
 
-  // Financeiro/loja (pagamentos, pacotes, fidelidade, produtos) e
-  // avaliações entram nas próximas fases — ver docs/ARQUITETURA.md seção 04.
+  // Mini e-commerce (produtos/pedidos), avaliações e dashboards entram nas
+  // próximas fases — ver docs/ARQUITETURA.md seção 04.
 
   return app;
 }

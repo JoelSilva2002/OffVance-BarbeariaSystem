@@ -62,6 +62,8 @@ model Client {
   preferredBarber Barber?   @relation("PreferredBarber", fields: [preferredBarberId], references: [id])
   appointments    Appointment[]
   notifications   Notification[]
+  clientPackages  ClientPackage[]
+  loyaltyEntries  LoyaltyEntry[]
 
   @@index([shopId])
   @@map("clients")
@@ -106,6 +108,8 @@ model ShopSettings {
   cancelDeadlineHours       Int      @default(2) @map("cancel_deadline_hours")
   rescheduleDeadlineHours   Int      @default(2) @map("reschedule_deadline_hours")
   autoConfirmHoursBefore    Int      @default(24) @map("auto_confirm_hours_before")
+  loyaltyPointsPerCurrency  Decimal  @default(1.00) @map("loyalty_points_per_currency") @db.Decimal(6, 2)
+  loyaltyPointValueCents    Int      @default(5) @map("loyalty_point_value_cents")
   createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -270,6 +274,8 @@ model Appointment {
   barber Barber  @relation(fields: [barberId], references: [id])
   items  AppointmentItem[]
   statusHistory AppointmentStatusHistory[]
+  payments      Payment[]
+  packageCreditEntries PackageCreditEntry[]
 
   @@index([shopId])
   @@index([barberId, startsAt])
@@ -441,4 +447,144 @@ model OtpCode {
 
   @@index([phone, createdAt])
   @@map("otp_codes")
+}
+
+// ---------------------------------------------------------------------------
+// Pagamentos, pacotes e fidelidade
+// ---------------------------------------------------------------------------
+//
+// Não há gateway de pagamento integrado: todo Payment aqui representa
+// dinheiro que o balcão já recebeu (dinheiro/cartão/pix) ou crédito de
+// pacote já consumido — é registro, não processamento de cobrança.
+//
+// Crédito de pacote é debitado só na CONCLUSÃO do atendimento (não na
+// criação), então cancelar um agendamento nunca precisa estornar crédito —
+// ele nunca chegou a ser debitado.
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  PIX
+  PACKAGE
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+// Três FKs opcionais + CHECK de exatamente uma preenchida (migração manual,
+// mesmo padrão da constraint de exclusão de appointments): dá pra saber de
+// onde veio o dinheiro sem um polimórfico (payable_type, payable_id).
+model Payment {
+  id              String        @id @default(cuid())
+  shopId          String        @default("default") @map("shop_id")
+  appointmentId   String?       @map("appointment_id")
+  clientPackageId String?       @map("client_package_id")
+  amountCents     Int           @map("amount_cents")
+  method          PaymentMethod
+  status          PaymentStatus @default(PAID)
+  paidAt          DateTime?     @map("paid_at") @db.Timestamptz(3)
+  externalId      String?       @map("external_id")
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  appointment   Appointment?   @relation(fields: [appointmentId], references: [id])
+  clientPackage ClientPackage? @relation(fields: [clientPackageId], references: [id])
+
+  @@index([appointmentId])
+  @@index([clientPackageId])
+  @@index([shopId, createdAt])
+  @@map("payments")
+}
+
+model Package {
+  id              String   @id @default(cuid())
+  shopId          String   @default("default") @map("shop_id")
+  name            String
+  description     String?
+  priceCents      Int      @map("price_cents")
+  creditsQty      Int      @map("credits_qty")
+  // vazio = vale para qualquer serviço; senão, só para os serviços listados
+  scopeServiceIds String[] @map("scope_service_ids")
+  validityDays    Int      @map("validity_days")
+  isRecurring     Boolean  @default(false) @map("is_recurring")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clientPackages ClientPackage[]
+
+  @@index([shopId])
+  @@map("packages")
+}
+
+enum ClientPackageStatus {
+  ACTIVE
+  CANCELLED
+}
+
+// Saldo de créditos = creditsTotal + SUM(creditEntries.delta) — nunca um
+// contador solto (mesma razão de ledger usada em fidelidade).
+model ClientPackage {
+  id           String              @id @default(cuid())
+  shopId       String              @default("default") @map("shop_id")
+  clientId     String              @map("client_id")
+  packageId    String              @map("package_id")
+  purchasedAt  DateTime            @default(now()) @map("purchased_at") @db.Timestamptz(3)
+  expiresAt    DateTime            @map("expires_at") @db.Timestamptz(3)
+  creditsTotal Int                 @map("credits_total")
+  status       ClientPackageStatus @default(ACTIVE)
+
+  client        Client               @relation(fields: [clientId], references: [id])
+  package       Package              @relation(fields: [packageId], references: [id])
+  creditEntries PackageCreditEntry[]
+  payments      Payment[]
+
+  @@index([clientId])
+  @@index([shopId])
+  @@map("client_packages")
+}
+
+model PackageCreditEntry {
+  id              String   @id @default(cuid())
+  clientPackageId String   @map("client_package_id")
+  appointmentId   String?  @map("appointment_id")
+  delta           Int
+  reason          String
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  clientPackage ClientPackage @relation(fields: [clientPackageId], references: [id], onDelete: Cascade)
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
+
+  @@index([clientPackageId])
+  @@map("package_credit_entries")
+}
+
+enum LoyaltyReason {
+  EARN
+  REDEEM
+  ADJUST
+}
+
+// Saldo = SUM(deltaPoints) — mesmo motivo do ledger de pacotes: um campo de
+// saldo isolado desanda no primeiro bug de concorrência.
+model LoyaltyEntry {
+  id          String        @id @default(cuid())
+  shopId      String        @default("default") @map("shop_id")
+  clientId    String        @map("client_id")
+  deltaPoints Int           @map("delta_points")
+  reason      LoyaltyReason
+  refType     String?       @map("ref_type")
+  refId       String?       @map("ref_id")
+  expiresAt   DateTime?     @map("expires_at") @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@index([clientId, createdAt])
+  @@index([shopId])
+  @@map("loyalty_entries")
 }

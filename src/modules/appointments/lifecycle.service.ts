@@ -5,11 +5,13 @@ import { Problem } from "../../lib/problem.js";
 import { getShopSettings } from "../scheduling/shop-settings.service.js";
 import { isExclusionViolation, lockBarberDay } from "./concurrency.js";
 import { validateSlot } from "./slot-validation.js";
-import type { RescheduleInput } from "./lifecycle.schema.js";
+import type { CompletionPaymentInput, RescheduleInput } from "./lifecycle.schema.js";
 import { recordAppointmentEvent } from "../outbox/outbox.recorder.js";
 import { APPOINTMENT_EVENT } from "../outbox/event-types.js";
 import { appointmentEventPayload } from "../outbox/appointment-payload.js";
 import { cancelReminder, scheduleReceipt, scheduleReminder } from "../notifications/scheduler.js";
+import { consumePackageCredit } from "../packages/client-packages.service.js";
+import { earnPoints, redeemPoints } from "../loyalty/loyalty.service.js";
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -72,27 +74,66 @@ export async function checkInAppointment(id: string, actorType: ActorType, actor
   });
 }
 
+/**
+ * "Todo atendimento tem um pagamento, mesmo o de valor zero"
+ * (docs/ARQUITETURA.md §01): PACKAGE zera o valor cobrado (o dinheiro já
+ * entrou na compra do pacote); pontos resgatados abatem do valor antes de
+ * gerar o Payment. Pontos ganhos são sobre o que efetivamente circulou —
+ * cobrir com pacote não gera pontos novos.
+ */
 export async function completeAppointment(
   id: string,
   actorType: ActorType,
-  actorId?: string,
-  internalNotes?: string,
+  actorId: string | undefined,
+  internalNotes: string | undefined,
+  payment: CompletionPaymentInput,
 ) {
   return prisma.$transaction(async (tx) => {
     const appointment = await getAppointmentOrThrow(tx, id);
     if (!COMPLETABLE_FROM.includes(appointment.status)) invalidTransition(appointment.status, "concluir");
+    if (!appointment.clientId) {
+      throw new Problem(422, "BLOCK_CANNOT_BE_COMPLETED", "Bloqueios não têm cliente — não há o que concluir.");
+    }
+
+    const settings = await getShopSettings(tx);
+    let amountCents = appointment.totalPriceCents;
+
+    if (payment.method === "PACKAGE") {
+      await consumePackageCredit(
+        tx,
+        payment.clientPackageId!,
+        appointment.clientId,
+        id,
+        appointment.items.map((item) => item.serviceId),
+      );
+      amountCents = 0;
+    } else if (payment.redeemPoints && payment.redeemPoints > 0) {
+      const discountCents = payment.redeemPoints * settings.loyaltyPointValueCents;
+      amountCents = Math.max(0, amountCents - discountCents);
+      await redeemPoints(tx, appointment.clientId, payment.redeemPoints, "appointment", id);
+    }
+
+    const paymentRecord = await tx.payment.create({
+      data: { appointmentId: id, amountCents, method: payment.method, status: "PAID", paidAt: new Date() },
+    });
+
+    const pointsEarned = Math.floor((amountCents / 100) * Number(settings.loyaltyPointsPerCurrency));
+    await earnPoints(tx, appointment.clientId, pointsEarned, "appointment", id);
 
     const updated = await tx.appointment.update({
       where: { id },
       data: { status: "CONCLUIDO", internalNotes: internalNotes ?? appointment.internalNotes },
     });
     await recordTransition(tx, id, appointment.status, "CONCLUIDO", actorType, actorId, null);
-    await recordAppointmentEvent(tx, APPOINTMENT_EVENT.COMPLETED, id, appointmentEventPayload(updated));
-    await scheduleReceipt(tx, updated);
-    return updated;
-    // Registro de pagamento e crédito de pontos entram quando as tabelas de
-    // financeiro/fidelidade existirem (fase 5). O recibo já usa o total
-    // congelado no próprio agendamento.
+    await recordAppointmentEvent(
+      tx,
+      APPOINTMENT_EVENT.COMPLETED,
+      id,
+      appointmentEventPayload(updated, { amountPaidCents: amountCents, paymentMethod: payment.method, pointsEarned }),
+    );
+    await scheduleReceipt(tx, updated, amountCents, payment.method);
+
+    return { ...updated, payment: paymentRecord, pointsEarned };
   });
 }
 

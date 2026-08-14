@@ -69,8 +69,8 @@ export async function appointmentsRoutes(app: FastifyInstance) {
   });
 
   app.post<{ Params: { id: string } }>("/appointments/:id/complete", async (request) => {
-    const body = completeSchema.parse(request.body ?? {});
-    return completeAppointment(request.params.id, body.actorType, body.actorId, body.internalNotes);
+    const body = completeSchema.parse(request.body);
+    return completeAppointment(request.params.id, body.actorType, body.actorId, body.internalNotes, body.payment);
   });
 
   app.post<{ Params: { id: string } }>("/appointments/:id/cancel", async (request) => {
