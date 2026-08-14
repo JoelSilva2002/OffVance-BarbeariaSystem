@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: prisma-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: projeto_prisma
+    ports:
+      - "5432:5432"
+    volumes:
+      - prisma_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prisma -d projeto_prisma"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  prisma_postgres_data:
