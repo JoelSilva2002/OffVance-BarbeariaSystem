@@ -140,8 +140,18 @@ export async function getWorkingBlocks(db: Client, barberId: string, localDate: 
   );
 }
 
-/** Exceções (folga/feriado/bloqueio) + agendamentos ativos que ocupam o dia. */
-export async function getBusyIntervals(db: Client, barberId: string, localDate: string, tz: string): Promise<Interval[]> {
+/**
+ * Exceções (folga/feriado/bloqueio) + agendamentos ativos que ocupam o dia.
+ * `excludeAppointmentId` existe para a remarcação: o próprio agendamento
+ * sendo movido não pode "colidir consigo mesmo" na revalidação do slot.
+ */
+export async function getBusyIntervals(
+  db: Client,
+  barberId: string,
+  localDate: string,
+  tz: string,
+  excludeAppointmentId?: string,
+): Promise<Interval[]> {
   const { start: dayStart, end: dayEnd } = dayWindowUtc(localDate, tz);
 
   const [exceptions, appointments] = await Promise.all([
@@ -158,6 +168,7 @@ export async function getBusyIntervals(db: Client, barberId: string, localDate: 
         status: { in: OCCUPYING_STATUSES },
         startsAt: { lt: new Date(dayEnd) },
         endsAt: { gt: new Date(dayStart) },
+        id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
       },
       select: { startsAt: true, endsAt: true },
     }),

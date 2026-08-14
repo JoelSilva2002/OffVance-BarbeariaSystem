@@ -266,12 +266,38 @@ model Appointment {
   client Client? @relation(fields: [clientId], references: [id])
   barber Barber  @relation(fields: [barberId], references: [id])
   items  AppointmentItem[]
+  statusHistory AppointmentStatusHistory[]
 
   @@index([shopId])
   @@index([barberId, startsAt])
   @@index([clientId, startsAt])
   @@index([status, startsAt])
   @@map("appointments")
+}
+
+enum ActorType {
+  CLIENT
+  BARBER
+  ADMIN
+  SYSTEM
+  API
+}
+
+// Trilha de auditoria: quem mudou o status de qual agendamento, quando e por quê.
+model AppointmentStatusHistory {
+  id            String             @id @default(cuid())
+  appointmentId String             @map("appointment_id")
+  fromStatus    AppointmentStatus? @map("from_status")
+  toStatus      AppointmentStatus  @map("to_status")
+  actorType     ActorType          @map("actor_type")
+  actorId       String?            @map("actor_id")
+  reason        String?
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, createdAt])
+  @@map("appointment_status_history")
 }
 
 model AppointmentItem {
