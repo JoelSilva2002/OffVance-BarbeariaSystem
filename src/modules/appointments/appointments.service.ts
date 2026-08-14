@@ -10,6 +10,7 @@ import type { CreateAppointmentInput } from "./appointments.schema.js";
 import { recordAppointmentEvent } from "../outbox/outbox.recorder.js";
 import { APPOINTMENT_EVENT } from "../outbox/event-types.js";
 import { appointmentEventPayload } from "../outbox/appointment-payload.js";
+import { scheduleReminder } from "../notifications/scheduler.js";
 
 const MAX_CODE_RETRIES = 3;
 
@@ -95,8 +96,7 @@ async function attemptCreate(input: CreateAppointmentInput, startsAt: Date) {
         });
 
         await recordAppointmentEvent(tx, APPOINTMENT_EVENT.CREATED, appointment.id, appointmentEventPayload(appointment));
-
-        // notificações agendadas (lembrete, confirmação) entram numa fase seguinte
+        await scheduleReminder(tx, appointment, settings);
 
         return appointment;
       },

@@ -9,6 +9,7 @@ import type { RescheduleInput } from "./lifecycle.schema.js";
 import { recordAppointmentEvent } from "../outbox/outbox.recorder.js";
 import { APPOINTMENT_EVENT } from "../outbox/event-types.js";
 import { appointmentEventPayload } from "../outbox/appointment-payload.js";
+import { cancelReminder, scheduleReceipt, scheduleReminder } from "../notifications/scheduler.js";
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -87,9 +88,11 @@ export async function completeAppointment(
     });
     await recordTransition(tx, id, appointment.status, "CONCLUIDO", actorType, actorId, null);
     await recordAppointmentEvent(tx, APPOINTMENT_EVENT.COMPLETED, id, appointmentEventPayload(updated));
+    await scheduleReceipt(tx, updated);
     return updated;
-    // Registro de pagamento, crédito de pontos e recibo entram quando as
-    // tabelas de financeiro/fidelidade existirem (fase 5).
+    // Registro de pagamento e crédito de pontos entram quando as tabelas de
+    // financeiro/fidelidade existirem (fase 5). O recibo já usa o total
+    // congelado no próprio agendamento.
   });
 }
 
@@ -121,6 +124,7 @@ export async function cancelAppointment(id: string, actorType: ActorType, actorI
       id,
       appointmentEventPayload(updated, { reason: reason ?? null }),
     );
+    await cancelReminder(tx, id);
     return updated;
     // Estorno de crédito de pacote entra quando a tabela existir (fase 5).
   });
@@ -212,6 +216,8 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput) 
           id,
           appointmentEventPayload(updated, { previousStartsAt: oldStartsAt.toISOString() }),
         );
+        // mesmo dedup_key do lembrete original — reagenda no lugar de duplicar
+        await scheduleReminder(tx, updated, settings);
 
         return updated;
       },

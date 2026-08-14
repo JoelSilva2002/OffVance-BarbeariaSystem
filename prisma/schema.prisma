@@ -48,7 +48,9 @@ model Client {
   id                 String   @id @default(cuid())
   shopId             String   @default("default") @map("shop_id")
   userId             String   @unique @map("user_id")
-  fullName           String   @map("full_name")
+  // Opcional: o primeiro login (OTP) cria o Client antes do cadastro estar
+  // completo — o app pede o nome depois via PATCH /me.
+  fullName           String?  @map("full_name")
   birthDate          DateTime? @map("birth_date") @db.Date
   preferredBarberId  String?  @map("preferred_barber_id")
   allergyNotes       String?  @map("allergy_notes")
@@ -59,6 +61,7 @@ model Client {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   preferredBarber Barber?   @relation("PreferredBarber", fields: [preferredBarberId], references: [id])
   appointments    Appointment[]
+  notifications   Notification[]
 
   @@index([shopId])
   @@map("clients")
@@ -381,4 +384,61 @@ model WebhookDelivery {
   @@index([status, nextRetryAt])
   @@index([outboxEventId])
   @@map("webhook_deliveries")
+}
+
+// ---------------------------------------------------------------------------
+// Notificações agendadas + autenticação do portal (OTP)
+// ---------------------------------------------------------------------------
+
+enum NotificationChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  CANCELLED
+  FAILED
+}
+
+// scheduled_for materializa o lembrete como uma linha FUTURA — o worker só
+// varre scheduled_for <= now(). "SENT" aqui significa "entregue ao pipeline
+// de webhooks" (emitimos um outbox_event notification.due); a confirmação de
+// entrega real pelo WhatsApp/e-mail é reportada de volta via PATCH
+// /notifications/:id, preenchendo provider_message_id.
+model Notification {
+  id                String              @id @default(cuid())
+  shopId            String              @default("default") @map("shop_id")
+  clientId          String?             @map("client_id")
+  channel           NotificationChannel
+  template          String
+  payload           Json
+  scheduledFor      DateTime            @map("scheduled_for") @db.Timestamptz(3)
+  sentAt            DateTime?           @map("sent_at") @db.Timestamptz(3)
+  status            NotificationStatus  @default(PENDING)
+  providerMessageId String?             @map("provider_message_id")
+  dedupKey          String              @unique @map("dedup_key")
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  client Client? @relation(fields: [clientId], references: [id])
+
+  @@index([status, scheduledFor])
+  @@index([shopId])
+  @@map("notifications")
+}
+
+// Códigos de uso único para login por telefone. `attempts` limita
+// tentativas de adivinhação; `consumedAt` impede reuso do mesmo código.
+model OtpCode {
+  id         String    @id @default(cuid())
+  phone      String
+  code       String
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([phone, createdAt])
+  @@map("otp_codes")
 }

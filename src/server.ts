@@ -3,6 +3,8 @@ import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./lib/prisma.js";
 import { deliverPendingWebhooks, fanOutPendingEvents } from "./modules/outbox/dispatcher.js";
+import { fireDueNotifications } from "./modules/notifications/notification-dispatcher.js";
+import { sweepAutoConfirm } from "./modules/notifications/auto-confirm.js";
 
 const app = buildApp();
 
@@ -13,10 +15,12 @@ const dispatchTimer = setInterval(async () => {
   if (dispatching) return; // não sobrepõe execuções se uma tick anterior ainda estiver rodando
   dispatching = true;
   try {
+    await fireDueNotifications();
     await fanOutPendingEvents();
     await deliverPendingWebhooks();
+    await sweepAutoConfirm();
   } catch (err) {
-    app.log.error(err, "Falha no dispatcher de webhooks");
+    app.log.error(err, "Falha no ciclo de background (notificações/webhooks/auto-confirmação)");
   } finally {
     dispatching = false;
   }

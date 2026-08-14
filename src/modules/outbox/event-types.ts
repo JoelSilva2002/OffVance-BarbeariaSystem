@@ -14,4 +14,14 @@ export const APPOINTMENT_EVENT = {
 
 export type AppointmentEventType = (typeof APPOINTMENT_EVENT)[keyof typeof APPOINTMENT_EVENT];
 
-export const ALL_EVENT_TYPES: string[] = Object.values(APPOINTMENT_EVENT);
+/**
+ * Disparado quando uma `notifications` agendada chega no `scheduled_for`
+ * (lembrete, pedido de confirmação, recibo, código OTP). O n8n assina este
+ * evento para de fato entregar por WhatsApp/e-mail — o backend só decide
+ * quando e o quê, nunca como entregar.
+ */
+export const NOTIFICATION_EVENT = {
+  DUE: "notification.due",
+} as const;
+
+export const ALL_EVENT_TYPES: string[] = [...Object.values(APPOINTMENT_EVENT), ...Object.values(NOTIFICATION_EVENT)];
