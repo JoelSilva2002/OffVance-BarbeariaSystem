@@ -16,7 +16,12 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "db:up": "docker compose up -d postgres",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "db:seed": "tsx prisma/seed.ts",
+    "test:concurrency": "tsx scripts/concurrency-test.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
@@ -24,11 +29,15 @@
     "@prisma/client": "^5.20.0",
     "close-with-grace": "^2.2.0",
     "fastify": "^5.1.0",
+    "fastify-plugin": "^6.0.0",
     "fastify-type-provider-zod": "^4.0.1",
+    "luxon": "^3.7.2",
+    "nanoid": "^6.0.1",
     "pino-pretty": "^11.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/luxon": "^3.7.4",
     "@types/node": "^22.7.5",
     "prisma": "^5.20.0",
     "tsx": "^4.19.1",

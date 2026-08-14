@@ -1,4 +1,5 @@
 import type { FastifyError, FastifyInstance } from "fastify";
+import fp from "fastify-plugin";
 import { ZodError } from "zod";
 import { Problem } from "../lib/problem.js";
 
@@ -6,8 +7,12 @@ import { Problem } from "../lib/problem.js";
  * Converte qualquer erro lançado nas rotas para application/problem+json
  * (RFC 9457), com um `code` estável para o n8n e outros consumidores
  * roteassem sem depender de texto livre.
+ *
+ * Envolvido com fastify-plugin para escapar da encapsulação: sem isso,
+ * setErrorHandler só valeria para rotas registradas dentro deste mesmo
+ * plugin, não para os módulos de negócio registrados como irmãos em app.ts.
  */
-export async function errorHandlerPlugin(app: FastifyInstance) {
+async function errorHandlerPluginImpl(app: FastifyInstance) {
   app.setErrorHandler((error: FastifyError | Problem | ZodError, request, reply) => {
     if (error instanceof Problem) {
       request.log.warn({ code: error.code }, error.detail);
@@ -37,3 +42,5 @@ export async function errorHandlerPlugin(app: FastifyInstance) {
     reply.code(404).type("application/problem+json").send(problem.toBody(request.url));
   });
 }
+
+export const errorHandlerPlugin = fp(errorHandlerPluginImpl, { name: "error-handler" });
