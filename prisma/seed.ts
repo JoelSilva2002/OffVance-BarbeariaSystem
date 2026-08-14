@@ -4,8 +4,12 @@
  * jeito de ter dados reais para testar disponibilidade e reserva.
  */
 import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "../src/lib/password.js";
 
 const prisma = new PrismaClient();
+
+// Só para dev/teste local — nunca use senha fixa em produção.
+const DEV_PASSWORD = "trocar123";
 
 async function main() {
   await prisma.shopSettings.upsert({
@@ -61,8 +65,15 @@ async function main() {
 
   const userJoao = await prisma.user.upsert({
     where: { id: "usr_barber_joao" },
-    update: {},
-    create: { id: "usr_barber_joao", phone: "+5511999990001", role: "BARBER", status: "ACTIVE" },
+    update: { email: "joao@barbearia.dev", passwordHash: hashPassword(DEV_PASSWORD) },
+    create: {
+      id: "usr_barber_joao",
+      phone: "+5511999990001",
+      email: "joao@barbearia.dev",
+      passwordHash: hashPassword(DEV_PASSWORD),
+      role: "BARBER",
+      status: "ACTIVE",
+    },
   });
 
   const joao = await prisma.barber.upsert({
@@ -126,7 +137,21 @@ async function main() {
     create: { id: "cli_maria", userId: userMaria.id, fullName: "Maria Silva" },
   });
 
-  console.log("Seed concluído: 1 barbeiro (João), 2 serviços, 1 cliente (Maria).");
+  await prisma.user.upsert({
+    where: { id: "usr_admin_dono" },
+    update: {},
+    create: {
+      id: "usr_admin_dono",
+      phone: "+5511999990002",
+      email: "dono@barbearia.dev",
+      passwordHash: hashPassword(DEV_PASSWORD),
+      role: "ADMIN",
+      status: "ACTIVE",
+    },
+  });
+
+  console.log("Seed concluído: 1 barbeiro (João), 2 serviços, 1 cliente (Maria), 1 admin (dono).");
+  console.log(`Login de equipe (dev): dono@barbearia.dev / joao@barbearia.dev — senha "${DEV_PASSWORD}"`);
 }
 
 main()

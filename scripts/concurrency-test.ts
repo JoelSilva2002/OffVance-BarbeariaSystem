@@ -14,8 +14,21 @@ const CONCURRENCY = Number(process.env.CONCURRENCY ?? 50);
 const BARBER_ID = "brb_joao";
 const CLIENT_ID = "cli_maria";
 const SERVICE_IDS = ["svc_corte"];
+const STAFF_EMAIL = process.env.STAFF_EMAIL ?? "dono@barbearia.dev";
+const STAFF_PASSWORD = process.env.STAFF_PASSWORD ?? "trocar123";
 
 const prisma = new PrismaClient();
+
+async function staffToken(): Promise<string> {
+  const res = await fetch(`${BASE_URL}/auth/staff/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: STAFF_EMAIL, password: STAFF_PASSWORD }),
+  });
+  if (!res.ok) throw new Error(`Login de equipe falhou (${res.status}) — rode \`pnpm db:seed\` antes do teste.`);
+  const { token } = await res.json();
+  return token;
+}
 
 function nextWeekdayAt(hour: number): DateTime {
   let dt = DateTime.now().setZone("America/Sao_Paulo").plus({ days: 3 }).set({
@@ -29,6 +42,7 @@ function nextWeekdayAt(hour: number): DateTime {
 }
 
 async function main() {
+  const token = await staffToken();
   const target = nextWeekdayAt(10);
   const startsAt = target.toISO()!;
   console.log(`Alvo: ${BARBER_ID} em ${startsAt} (${CONCURRENCY} requisições simultâneas)\n`);
@@ -39,7 +53,7 @@ async function main() {
   const requests = Array.from({ length: CONCURRENCY }, (_, i) =>
     fetch(`${BASE_URL}/appointments`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         barberId: BARBER_ID,
         clientId: CLIENT_ID,

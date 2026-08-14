@@ -1,9 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
+import { requireStaffAuth } from "../../plugins/auth.js";
 import { listNotificationsQuerySchema, reportDeliverySchema } from "./notifications.schema.js";
 
 export async function notificationsRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireStaffAuth);
+
   app.get("/notifications", async (request) => {
     const query = listNotificationsQuerySchema.parse(request.query);
     const notifications = await prisma.notification.findMany({

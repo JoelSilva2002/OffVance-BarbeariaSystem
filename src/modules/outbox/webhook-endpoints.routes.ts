@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { requireAdminAuth } from "../../plugins/auth.js";
 import { createWebhookEndpointSchema, updateWebhookEndpointSchema } from "./webhook-endpoints.schema.js";
 import {
   createWebhookEndpoint,
@@ -11,7 +12,10 @@ import {
 
 const deliveriesQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) });
 
+// Configuração de integração com segredos de assinatura — só ADMIN.
 export async function webhookEndpointsRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireAdminAuth);
+
   app.get("/webhook-endpoints", async () => {
     return { endpoints: await listWebhookEndpoints() };
   });

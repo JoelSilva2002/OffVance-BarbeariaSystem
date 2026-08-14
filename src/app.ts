@@ -13,6 +13,7 @@ import { webhookEndpointsRoutes } from "./modules/outbox/webhook-endpoints.route
 import { eventsRoutes } from "./modules/outbox/events.routes.js";
 import { notificationsRoutes } from "./modules/notifications/notifications.routes.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import { staffAuthRoutes } from "./modules/auth/staff-auth.routes.js";
 import { meRoutes } from "./modules/portal/me.routes.js";
 import { packagesRoutes } from "./modules/packages/packages.routes.js";
 import { loyaltyRoutes } from "./modules/loyalty/loyalty.routes.js";
@@ -44,6 +45,7 @@ export function buildApp() {
   app.register(eventsRoutes);
   app.register(notificationsRoutes);
   app.register(authRoutes);
+  app.register(staffAuthRoutes);
   app.register(meRoutes);
   app.register(packagesRoutes);
   app.register(loyaltyRoutes);

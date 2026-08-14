@@ -3,6 +3,7 @@ import { DateTime } from "luxon";
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
 import { union, type Interval } from "../../lib/interval.js";
+import { hashPassword } from "../../lib/password.js";
 import { getShopSettings } from "../scheduling/shop-settings.service.js";
 import { OCCUPYING_STATUSES } from "../scheduling/availability.service.js";
 import type {
@@ -33,10 +34,11 @@ export async function getBarber(id: string) {
 }
 
 /**
- * Cria o colaborador. Como ainda não há endpoint de identidade (fase 4),
- * este endpoint também cria o User por trás — a menos que o telefone já
- * pertença a alguém (ex.: já é cliente), caso em que o perfil de barbeiro
- * é anexado ao mesmo User.
+ * Cria o colaborador. Este endpoint também cria o User por trás — a menos
+ * que o telefone já pertença a alguém (ex.: já é cliente), caso em que o
+ * perfil de barbeiro é anexado ao mesmo User. `password` é opcional: sem
+ * ela, o barbeiro existe no sistema mas não consegue logar como equipe
+ * (POST /auth/staff/login) até um admin definir uma via PATCH /barbers/:id.
  */
 export async function createBarber(input: CreateBarberInput) {
   try {
@@ -47,11 +49,15 @@ export async function createBarber(input: CreateBarberInput) {
         throw new Problem(409, "ALREADY_A_BARBER", "Já existe um barbeiro cadastrado com esse telefone.");
       }
 
+      const passwordHash = input.password ? hashPassword(input.password) : undefined;
+
       if (!user) {
         user = await tx.user.create({
-          data: { phone: input.phone, email: input.email, role: "BARBER", status: "ACTIVE" },
+          data: { phone: input.phone, email: input.email, passwordHash, role: "BARBER", status: "ACTIVE" },
           include: { barber: true },
         });
+      } else if (passwordHash) {
+        await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
       }
 
       return tx.barber.create({
@@ -72,8 +78,12 @@ export async function createBarber(input: CreateBarberInput) {
 }
 
 export async function updateBarber(id: string, input: UpdateBarberInput) {
-  await getBarber(id);
+  const barber = await getBarber(id);
   try {
+    if (input.password) {
+      await prisma.user.update({ where: { id: barber.userId }, data: { passwordHash: hashPassword(input.password) } });
+    }
+
     return await prisma.barber.update({
       where: { id },
       data: {

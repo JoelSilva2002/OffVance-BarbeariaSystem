@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
+import { requireStaffAuth } from "../../plugins/auth.js";
 
 const listEventsQuerySchema = z.object({
   since: z.string().optional(),
@@ -16,7 +17,11 @@ const listEventsQuerySchema = z.object({
  * NAT ou o push falhou, ele lê o outbox diretamente por aqui em vez de
  * esperar um POST chegar.
  */
+// TODO: quando existir API key para máquinas (n8n), trocar por isso — hoje
+// o n8n precisa de um token de staff para ler o outbox por pull.
 export async function eventsRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireStaffAuth);
+
   app.get("/events", async (request) => {
     const query = listEventsQuerySchema.parse(request.query);
 

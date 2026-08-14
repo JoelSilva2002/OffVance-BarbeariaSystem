@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { AppointmentStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import { requireStaffAuth } from "../../plugins/auth.js";
 import { createAppointmentSchema, listAppointmentsQuerySchema } from "./appointments.schema.js";
 import { createAppointment } from "./appointments.service.js";
 import {
@@ -22,7 +23,13 @@ import {
   rescheduleAppointment,
 } from "./lifecycle.service.js";
 
+/**
+ * Toda rota aqui é uso de equipe (agendar em nome de um cliente, ver a
+ * agenda inteira, tocar o ciclo de vida) — o cliente usa /me/appointments/*.
+ */
 export async function appointmentsRoutes(app: FastifyInstance) {
+  app.addHook("preHandler", requireStaffAuth);
+
   app.post("/appointments", async (request, reply) => {
     const body = createAppointmentSchema.parse(request.body);
     const appointment = await createAppointment(body);
