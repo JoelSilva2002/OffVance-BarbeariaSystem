@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { requireAdminAuth, requireStaffAuth } from "../../plugins/auth.js";
+import { requireAdminOrApiKey, requireStaffOrApiKey } from "../../plugins/auth.js";
 import {
   createPackageSchema,
   listPackagesQuerySchema,
@@ -18,22 +18,28 @@ export async function packagesRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>("/packages/:id", async (request) => getPackage(request.params.id));
 
-  // Preço/composição do pacote é decisão de dono — ADMIN.
-  app.post("/packages", { preHandler: requireAdminAuth }, async (request, reply) => {
+  // Preço/composição do pacote é decisão de dono — ADMIN (ou API key com
+  // catalog:write).
+  app.post("/packages", { preHandler: requireAdminOrApiKey("catalog:write") }, async (request, reply) => {
     const body = createPackageSchema.parse(request.body);
     const pkg = await createPackage(body);
     reply.code(201).send(pkg);
   });
 
-  app.patch<{ Params: { id: string } }>("/packages/:id", { preHandler: requireAdminAuth }, async (request) => {
-    const body = updatePackageSchema.parse(request.body);
-    return updatePackage(request.params.id, body);
-  });
+  app.patch<{ Params: { id: string } }>(
+    "/packages/:id",
+    { preHandler: requireAdminOrApiKey("catalog:write") },
+    async (request) => {
+      const body = updatePackageSchema.parse(request.body);
+      return updatePackage(request.params.id, body);
+    },
+  );
 
-  // Vender/consultar pacote de um cliente é operação de balcão — staff.
+  // Vender/consultar pacote de um cliente é operação de balcão — staff (ou
+  // API key com financeiro:write/financeiro:read: é dinheiro entrando).
   app.post<{ Params: { id: string } }>(
     "/clients/:id/packages",
-    { preHandler: requireStaffAuth },
+    { preHandler: requireStaffOrApiKey("financeiro:write") },
     async (request, reply) => {
       const body = purchasePackageSchema.parse(request.body);
       const clientPackage = await purchasePackage(request.params.id, body);
@@ -43,7 +49,7 @@ export async function packagesRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>(
     "/clients/:id/packages",
-    { preHandler: requireStaffAuth },
+    { preHandler: requireStaffOrApiKey("financeiro:read") },
     async (request) => {
       return { packages: await listClientPackages(request.params.id) };
     },

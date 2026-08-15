@@ -185,17 +185,29 @@ humano logando (`docs/ARQUITETURA.md` §02). `POST /api-keys` (`ADMIN`) gera uma
 token. Listagens mostram só `keyPrefix` (os 8 primeiros caracteres) para identificar
 qual chave é qual.
 
-Escopos hoje (`src/modules/apikeys/scopes.ts`): `events:read` (`GET /events`, fallback de
-pull do outbox), `notifications:write` (`PATCH /notifications/:id`, callback reportando
-o resultado real de uma entrega), `appointments:read` e `appointments:write` (toda a
-família `/appointments/*` — criar, listar, ver e tocar o ciclo de vida inteiro). Uma
-chave com `appointments:write` tem o mesmo poder de um `ADMIN` sobre agendamentos: é o
-que permite o n8n criar, confirmar ou cancelar em nome do sistema quando o cliente
-responde no WhatsApp — não existe hoje um escopo mais estreito que isso.
+Escopos hoje (`src/modules/apikeys/scopes.ts`), um por domínio, cada um com o mesmo
+poder que um `ADMIN` teria naquela fatia da API — não existe versão mais estreita:
 
-Todas essas rotas aceitam **ou** uma sessão de equipe **ou** uma API key com o escopo
-certo — `requireStaffOrApiKey` em `src/plugins/auth.ts` decide qual caminho seguir pelo
-prefixo do token, sem misturar os dois. Chave sem o escopo necessário vira
+| Escopo                 | Cobre |
+|-------------------------|-------|
+| `events:read`            | `GET /events` — fallback de pull do outbox |
+| `notifications:write`    | `PATCH /notifications/:id` — callback reportando entrega real |
+| `appointments:read/write`| toda a família `/appointments/*` — criar, listar, ver e tocar o ciclo de vida |
+| `barbers:read/write`     | grade, folga e agenda de qualquer barbeiro (`/barbers/:id/schedule`, `/time-off`, `/agenda`) |
+| `catalog:write`          | categorias, serviços, produtos (incl. imagens/estoque) e composição de pacotes |
+| `financeiro:read/write`  | pedidos, relatórios, saldo de fidelidade e créditos de pacote de um cliente |
+
+Duas exceções ficam de fora de propósito, mesmo com o escopo mais amplo de cada domínio:
+criar/editar/remover a **identidade** de um barbeiro (`POST`/`PATCH`/`DELETE /barbers`,
+que cria credencial de login) e vincular quais serviços ele faz
+(`PUT /barbers/:id/services`) continuam só `ADMIN` — decisão de dono, não algo que uma
+chave devesse fazer sozinha.
+
+A maioria dessas rotas aceita **ou** uma sessão de equipe **ou** uma API key com o
+escopo certo (`requireStaffOrApiKey`); as que já eram `ADMIN`-only (catálogo,
+relatórios) usam `requireAdminOrApiKey` — a API key entra como alternativa, mas
+`BARBER` continua de fora dos dois jeitos. Os dois decidem qual caminho seguir pelo
+prefixo do token (`sk_...`), sem misturar os dois. Chave sem o escopo necessário vira
 `403 INSUFFICIENT_SCOPE` (a chave é válida, só não pode fazer aquilo) — diferente de
 `401`, que é chave ausente/inválida/revogada.
 
@@ -458,9 +470,5 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
 
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
-- **API key ainda não cobre barbeiros/catálogo/financeiro** — só agendamentos, eventos e
-  notificações (`appointments:*`, `events:read`, `notifications:write`). Uma integração
-  que precise, por exemplo, consultar preço de serviço ainda depende de sessão de
-  equipe.
 - **Sem expiração de pontos de fidelidade** nem limpeza de refresh tokens expirados na
   tabela (acumulam, não afeta segurança).

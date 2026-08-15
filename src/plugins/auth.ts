@@ -87,19 +87,6 @@ export async function requireAdminAuth(request: FastifyRequest, _reply: FastifyR
 }
 
 /**
- * Escopo por barbeiro: ADMIN passa sempre; BARBER só passa se `targetBarberId`
- * for o dele mesmo. Chamar depois de requireStaffAuth já ter populado
- * request.authStaff. Mensagem propositalmente vaga — não confirma nem nega
- * que o recurso existe, só que este token não pode vê-lo.
- */
-export function assertBarberScope(staff: StaffTokenPayload, targetBarberId: string) {
-  if (staff.role === "ADMIN") return;
-  if (staff.barberId !== targetBarberId) {
-    throw new Problem(403, "FORBIDDEN", "Você só pode acessar informações da sua própria agenda.");
-  }
-}
-
-/**
  * Autenticação de máquina (docs/ARQUITETURA.md §02: JWT para humanos,
  * `Bearer sk_live_…` com escopos para máquinas). Cada chamada verifica a
  * chave contra o hash no banco — nunca guardamos a chave crua — e confere
@@ -144,6 +131,23 @@ export function requireStaffOrApiKey(...requiredScopes: ApiKeyScope[]) {
       return apiKeyGuard(request, reply);
     }
     return requireStaffAuth(request, reply);
+  };
+}
+
+/**
+ * Mesma decisão por prefixo de `requireStaffOrApiKey`, mas para rotas que
+ * hoje são ADMIN-only (catálogo, relatórios): uma API key com o escopo
+ * certo pode chamar, mas uma sessão de equipe só passa sendo ADMIN — BARBER
+ * continua de fora, exatamente como já era antes de existir API key aqui.
+ */
+export function requireAdminOrApiKey(...requiredScopes: ApiKeyScope[]) {
+  const apiKeyGuard = requireApiKeyAuth(...requiredScopes);
+  return async function adminOrApiKeyGuard(request: FastifyRequest, reply: FastifyReply) {
+    const token = extractBearerToken(request);
+    if (token && isApiKeyFormat(token)) {
+      return apiKeyGuard(request, reply);
+    }
+    return requireAdminAuth(request, reply);
   };
 }
 

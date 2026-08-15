@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { requireAdminAuth } from "../../plugins/auth.js";
+import { requireAdminOrApiKey } from "../../plugins/auth.js";
 import {
   createCategorySchema,
   createServiceSchema,
@@ -37,8 +37,9 @@ export async function catalogRoutes(app: FastifyInstance) {
     return { barbers: await getServiceBarbers(request.params.id) };
   });
 
-  // Preço/catálogo é decisão de dono — ADMIN.
-  app.post("/service-categories", { preHandler: requireAdminAuth }, async (request, reply) => {
+  // Preço/catálogo é decisão de dono — ADMIN (ou API key com catalog:write,
+  // pra um sistema externo sincronizar preço/composição).
+  app.post("/service-categories", { preHandler: requireAdminOrApiKey("catalog:write") }, async (request, reply) => {
     const body = createCategorySchema.parse(request.body);
     const category = await createCategory(body);
     reply.code(201).send(category);
@@ -46,21 +47,25 @@ export async function catalogRoutes(app: FastifyInstance) {
 
   app.patch<{ Params: { id: string } }>(
     "/service-categories/:id",
-    { preHandler: requireAdminAuth },
+    { preHandler: requireAdminOrApiKey("catalog:write") },
     async (request) => {
       const body = updateCategorySchema.parse(request.body);
       return updateCategory(request.params.id, body);
     },
   );
 
-  app.post("/services", { preHandler: requireAdminAuth }, async (request, reply) => {
+  app.post("/services", { preHandler: requireAdminOrApiKey("catalog:write") }, async (request, reply) => {
     const body = createServiceSchema.parse(request.body);
     const service = await createService(body);
     reply.code(201).send(service);
   });
 
-  app.patch<{ Params: { id: string } }>("/services/:id", { preHandler: requireAdminAuth }, async (request) => {
-    const body = updateServiceSchema.parse(request.body);
-    return updateService(request.params.id, body);
-  });
+  app.patch<{ Params: { id: string } }>(
+    "/services/:id",
+    { preHandler: requireAdminOrApiKey("catalog:write") },
+    async (request) => {
+      const body = updateServiceSchema.parse(request.body);
+      return updateService(request.params.id, body);
+    },
+  );
 }

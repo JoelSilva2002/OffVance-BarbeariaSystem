@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { assertBarberScope, requireAdminAuth, requireStaffAuth } from "../../plugins/auth.js";
+import { assertActingScope, requireAdminAuth, requireStaffOrApiKey, resolveActingIdentity } from "../../plugins/auth.js";
 import {
   agendaQuerySchema,
   createBarberSchema,
@@ -34,8 +34,10 @@ export async function barbersRoutes(app: FastifyInstance) {
     return getBarber(request.params.id);
   });
 
-  // Criar/editar/remover colaborador e definir quem faz o quê é decisão de
-  // dono — ADMIN. Grade/folga/agenda são operacionais — qualquer staff.
+  // Criar/editar/remover colaborador (cria credencial de login) e definir
+  // quem faz o quê são decisão de dono — ADMIN só, de propósito sem
+  // alternativa de API key (ver comentário em apikeys/scopes.ts). Grade/
+  // folga/agenda são operacionais — staff ou API key com escopo barbers:*.
   app.post("/barbers", { preHandler: requireAdminAuth }, async (request, reply) => {
     const body = createBarberSchema.parse(request.body);
     const barber = await createBarber(body);
@@ -62,21 +64,22 @@ export async function barbersRoutes(app: FastifyInstance) {
   );
 
   // Grade/folga/agenda são operacionais, mas escopadas: um BARBER só mexe
-  // na própria (ADMIN não tem essa restrição).
+  // na própria (ADMIN e API key não têm essa restrição — resolveActingIdentity
+  // marca os dois como `unrestricted`, ver plugins/auth.ts).
   app.get<{ Params: { id: string } }>(
     "/barbers/:id/schedule",
-    { preHandler: requireStaffAuth },
+    { preHandler: requireStaffOrApiKey("barbers:read") },
     async (request) => {
-      assertBarberScope(request.authStaff!, request.params.id);
+      assertActingScope(resolveActingIdentity(request), request.params.id);
       return { schedule: await getSchedule(request.params.id) };
     },
   );
 
   app.put<{ Params: { id: string } }>(
     "/barbers/:id/schedule",
-    { preHandler: requireStaffAuth },
+    { preHandler: requireStaffOrApiKey("barbers:write") },
     async (request) => {
-      assertBarberScope(request.authStaff!, request.params.id);
+      assertActingScope(resolveActingIdentity(request), request.params.id);
       const body = putScheduleSchema.parse(request.body);
       return { schedule: await putSchedule(request.params.id, body) };
     },
@@ -84,9 +87,9 @@ export async function barbersRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { id: string } }>(
     "/barbers/:id/time-off",
-    { preHandler: requireStaffAuth },
+    { preHandler: requireStaffOrApiKey("barbers:write") },
     async (request, reply) => {
-      assertBarberScope(request.authStaff!, request.params.id);
+      assertActingScope(resolveActingIdentity(request), request.params.id);
       const body = timeOffSchema.parse(request.body);
       const result = await createTimeOff(request.params.id, body);
       reply.code(201).send(result);
@@ -95,9 +98,9 @@ export async function barbersRoutes(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>(
     "/barbers/:id/agenda",
-    { preHandler: requireStaffAuth },
+    { preHandler: requireStaffOrApiKey("barbers:read") },
     async (request) => {
-      assertBarberScope(request.authStaff!, request.params.id);
+      assertActingScope(resolveActingIdentity(request), request.params.id);
       const query = agendaQuerySchema.parse(request.query);
       return getAgenda(request.params.id, query.date);
     },
