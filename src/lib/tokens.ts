@@ -24,6 +24,15 @@ export function isApiKeyFormat(token: string): boolean {
   return token.startsWith(API_KEY_PREFIX);
 }
 
+/** Token opaco de "esqueci minha senha" (equipe) — mesma mecânica do refresh token, hash sha256 no banco. */
+export function generatePasswordResetToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+export function hashPasswordResetToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 /** Só os primeiros caracteres — o que fica visível numa listagem, nunca o segredo inteiro de novo. */
 export function apiKeyPrefix(key: string): string {
   return key.slice(0, API_KEY_PREFIX.length + 8);

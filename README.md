@@ -62,6 +62,7 @@ Todas em `.env.example`. Nenhuma tem efeito além do que o nome sugere, exceto:
 | `CORS_ORIGINS` | recomendado em produção | lista de origens de navegador autorizadas, separada por vírgula. Sem definir: em dev libera qualquer `localhost`/`127.0.0.1`; **em produção fecha todas as origens por padrão** (loga aviso, não derruba o processo — CORS fechado é seguro, só inconveniente) |
 | `RESEND_API_KEY` | recomendado para e-mail | chave da [Resend](https://resend.com/api-keys). Sem ela, notificações por e-mail ficam sempre `FAILED` (logado, servidor sobe normal — WhatsApp continua funcionando via n8n) |
 | `EMAIL_FROM` | não | remetente dos e-mails transacionais (padrão usa o domínio de teste da Resend) |
+| `ADMIN_PANEL_URL` | não | URL do painel administrativo. Sem ela (ainda não existe painel — sistema é API-first), o e-mail de "esqueci minha senha" mostra o token cru em vez de um link |
 | `SHOP_NAME` | não | nome exibido no cabeçalho dos e-mails (padrão `"Sua Barbearia"`) |
 | `PORT`, `HOST` | não | onde o Fastify escuta (padrão `3000` / `0.0.0.0`) |
 | `NODE_ENV` | não | `development` liga log bonito (`pino-pretty`) e as checagens de `JWT_SECRET`/`CORS_ORIGINS` acima |
@@ -153,6 +154,27 @@ nenhum `ADMIN` no banco. Depois disso, passa a exigir um `ADMIN` autenticado.
 **Proteção contra força bruta no login de equipe:** limite de 10 requisições/minuto por
 IP (`@fastify/rate-limit`) + bloqueio de conta por 15min após 5 senhas erradas seguidas
 (mesmo a senha certa é recusada enquanto bloqueada).
+
+### Recuperação de senha de equipe ("esqueci minha senha")
+
+`POST /auth/staff/forgot-password { email }` → sempre `202`, exista a conta ou não (não
+dá pista de qual e-mail tem login de equipe — mesma postura do login não distinguir
+"não existe" de "senha errada"). Se existir uma conta `ADMIN`/`BARBER` ativa com esse
+e-mail, gera um token opaco de uso único (30min de validade, guardado só como hash em
+`password_reset_tokens` — igual a refresh token e API key) e envia por e-mail via Resend;
+um pedido novo invalida qualquer token anterior ainda não usado. Limite de 5
+requisições/minuto por IP.
+
+`POST /auth/staff/reset-password { token, newPassword }` → `204`. Token inválido,
+expirado ou já usado vira `401 INVALID_RESET_TOKEN` (mesma mensagem pros três casos —
+não dá pista de qual é). Consumir um token válido também **revoga todos os refresh
+tokens ativos do usuário e limpa bloqueio de conta por tentativas erradas** — troca de
+senha por "esqueci" é tratada como possível comprometimento, então derruba todas as
+sessões abertas, igual à detecção de reuso de refresh token.
+
+Cliente não usa senha (login é OTP por WhatsApp), então este fluxo é só para equipe.
+Sem `ADMIN_PANEL_URL` configurada, o e-mail mostra o token cru em vez de um link — ainda
+não existe um painel administrativo com URL própria pra apontar (sistema é API-first).
 
 ### API key para máquinas (n8n e outros consumidores server-to-server)
 
@@ -350,9 +372,9 @@ tests/
     dates.ts      # nextWeekdayAt() — cai dentro da grade seg-sex dos fixtures
   unit/            # lógica pura, sem banco: álgebra de intervalos, hash de senha, tokens
   integration/     # contra o banco de teste: reserva/concorrência, ciclo de vida,
-                    # autenticação de equipe (login/bloqueio/refresh/rate limit), escopo
-                    # por barbeiro, API key, produtos/pedidos, pacotes/créditos,
-                    # fidelidade, relatórios
+                    # autenticação de equipe (login/bloqueio/refresh/rate limit,
+                    # recuperação de senha), escopo por barbeiro, API key,
+                    # produtos/pedidos, pacotes/créditos, fidelidade, relatórios
 ```
 
 `fileParallelism: false` no `vitest.config.ts` — todo teste de integração bate no MESMO
@@ -366,7 +388,9 @@ igual: a constraint de exclusão sob concorrência real (50 requisições simult
 versão automatizada de `scripts/concurrency-test.ts`, que continua existindo à parte
 como ferramenta de carga manual contra um servidor de verdade), a máquina de estados do
 agendamento, autenticação/segurança (bloqueio de conta, rotação e detecção de reuso de
-refresh token, rate limit, escopo por barbeiro, escopo de API key), e as travas
+refresh token, rate limit, escopo por barbeiro, escopo de API key, recuperação de senha
+por e-mail — token de uso único, invalidação do anterior, revogação de sessões ao trocar
+a senha), e as travas
 transacionais do lado financeiro — estoque com `SELECT ... FOR UPDATE` recusando venda
 além do saldo (`products`/`orders`), crédito de pacote debitado com a mesma trava e
 recusado quando expirado/fora de escopo/sem saldo (`packages`), pontos de fidelidade
@@ -440,5 +464,3 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
   equipe.
 - **Sem expiração de pontos de fidelidade** nem limpeza de refresh tokens expirados na
   tabela (acumulam, não afeta segurança).
-- **Recuperação de senha de equipe** é só reset manual por outro admin — sem fluxo de
-  "esqueci minha senha" por e-mail.

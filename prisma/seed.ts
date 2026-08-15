@@ -145,7 +145,7 @@ async function main() {
 
   await prisma.user.upsert({
     where: { id: "usr_admin_dono" },
-    update: {},
+    update: { email: "dono@barbearia.dev", passwordHash: hashPassword(DEV_PASSWORD) },
     create: {
       id: "usr_admin_dono",
       phone: "+5511999990002",

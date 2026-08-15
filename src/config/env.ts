@@ -18,6 +18,10 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("Barbearia <onboarding@resend.dev>"),
   SHOP_NAME: z.string().default("Sua Barbearia"),
+  // Ainda não existe painel administrativo com URL própria (o sistema é
+  // API-first — ver docs/ARQUITETURA.md); sem isso definido, o e-mail de
+  // "esqueci minha senha" mostra o token cru em vez de um link clicável.
+  ADMIN_PANEL_URL: z.string().url().optional(),
 });
 
 export const env = envSchema.parse(process.env);

@@ -50,9 +50,30 @@ model User {
   client  Client?
   barber  Barber?
   refreshTokens RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
 
   @@index([shopId])
   @@map("users")
+}
+
+// "Esqueci minha senha" de equipe (ADMIN/BARBER) — cliente não usa senha
+// (login é OTP por WhatsApp, ver OtpCode). Token opaco de uso único,
+// enviado por e-mail; validar com o token não muda de e-mail para e-mail
+// nem exige saber a senha antiga, então ao consumir um token válido a API
+// também revoga todos os refresh tokens do usuário (troca de senha por
+// "esqueci" é sinal tratado como possível comprometimento de conta).
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 // Sessão de equipe com rotação: cada uso troca o token por um novo e

@@ -3,7 +3,9 @@ import { Problem } from "../../lib/problem.js";
 import { requireAdminAuth } from "../../plugins/auth.js";
 import {
   createAdminSchema,
+  forgotPasswordSchema,
   refreshTokenSchema,
+  resetPasswordSchema,
   staffLoginSchema,
   updateAdminSchema,
 } from "./staff-auth.schema.js";
@@ -17,6 +19,7 @@ import {
   staffLogin,
   updateAdmin,
 } from "./staff-auth.service.js";
+import { requestPasswordReset, resetPassword } from "./password-reset.service.js";
 
 // Access token curto (a API só confia nele por pouco tempo); refresh token
 // longo e opaco, guardado com hash no banco, é o que sustenta a sessão.
@@ -67,6 +70,48 @@ export async function staffAuthRoutes(app: FastifyInstance) {
     await revokeRefreshToken(body.refreshToken);
     reply.code(204).send();
   });
+
+  // Sempre 202, exista a conta ou não — não dar pista de qual e-mail tem
+  // login de equipe (mesma postura de staffLogin não distinguir "não
+  // existe" de "senha errada"). Rate limit por IP evita virar spam de
+  // e-mail alheio.
+  app.post(
+    "/auth/staff/forgot-password",
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "1 minute",
+          errorResponseBuilder: (_request, context) =>
+            new Problem(429, "RATE_LIMITED", `Muitas tentativas. Tente de novo em ${Math.ceil(context.ttl / 1000)}s.`),
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = forgotPasswordSchema.parse(request.body);
+      await requestPasswordReset(body.email);
+      reply.code(202).send();
+    },
+  );
+
+  app.post(
+    "/auth/staff/reset-password",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+          errorResponseBuilder: (_request, context) =>
+            new Problem(429, "RATE_LIMITED", `Muitas tentativas. Tente de novo em ${Math.ceil(context.ttl / 1000)}s.`),
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = resetPasswordSchema.parse(request.body);
+      await resetPassword(body.token, body.newPassword);
+      reply.code(204).send();
+    },
+  );
 
   // Bootstrap: enquanto não existir nenhum ADMIN, este endpoint fica aberto
   // (é o único jeito de criar o primeiro). A partir daí, exige ADMIN.

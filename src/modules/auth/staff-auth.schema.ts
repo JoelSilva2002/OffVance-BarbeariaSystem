@@ -21,3 +21,14 @@ export const updateAdminSchema = z.object({
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
 });
 export type UpdateAdminInput = z.infer<typeof updateAdminSchema>;
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;

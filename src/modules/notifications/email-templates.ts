@@ -71,3 +71,26 @@ export function renderAppointmentReceiptEmail(payload: {
     text: `Recibo do atendimento ${payload.code}: R$ ${payload.amountReais} via ${payload.paymentMethodLabel}.`,
   };
 }
+
+export function renderPasswordResetEmail(payload: { token: string; expiresInMin: number }): EmailContent {
+  // Sem painel administrativo com URL própria ainda (sistema é API-first —
+  // ver docs/ARQUITETURA.md), o e-mail mostra o token cru para colar onde
+  // for pedido; se ADMIN_PANEL_URL existir no futuro, vira um link normal.
+  const link = env.ADMIN_PANEL_URL ? `${env.ADMIN_PANEL_URL}/reset-password?token=${payload.token}` : undefined;
+  return {
+    subject: "Redefinição de senha",
+    html: wrapHtml(`
+      <h1 style="font-size:18px;margin:0 0 16px;">Redefinir senha</h1>
+      <p style="color:#333;margin:0 0 8px;">Alguém pediu para redefinir a senha desta conta. Se não foi você, ignore este e-mail.</p>
+      ${
+        link
+          ? `<p style="margin:24px 0;"><a href="${link}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:6px;font-size:14px;">Redefinir senha</a></p>`
+          : `<p style="font-family:monospace;font-size:14px;word-break:break-all;background:#f4f4f5;padding:12px;border-radius:6px;margin:16px 0;">${payload.token}</p>`
+      }
+      <p style="color:#666;font-size:14px;margin:0;">Válido por ${payload.expiresInMin} minutos.</p>
+    `),
+    text: link
+      ? `Redefina sua senha: ${link} (válido por ${payload.expiresInMin} minutos)`
+      : `Token de redefinição de senha: ${payload.token} (válido por ${payload.expiresInMin} minutos)`,
+  };
+}
