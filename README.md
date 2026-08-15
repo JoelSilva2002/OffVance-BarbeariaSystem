@@ -73,13 +73,16 @@ Todas em `.env.example`. Nenhuma tem efeito além do que o nome sugere, exceto:
 |---|---|
 | `pnpm dev` | servidor com watch (tsx), carrega `.env` |
 | `pnpm build` / `pnpm start` | build de produção (`tsc`) e execução do `dist/` |
-| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm typecheck` | `tsc --noEmit` no `src/` e em `tests/` (`tsconfig.test.json`) |
 | `pnpm db:up` / `pnpm db:down` | sobe/derruba o Postgres do `docker-compose.yml` |
 | `pnpm db:seed` | popula dados de exemplo (idempotente — pode rodar de novo) |
 | `pnpm prisma:migrate` | cria e aplica uma nova migração a partir do `schema.prisma` — **leia [Migrações](#migrações-e-a-pegadinha-do-time_range) antes** |
 | `pnpm prisma:deploy` | aplica migrações pendentes sem gerar novas (uso em CI/produção) |
 | `pnpm prisma:studio` | GUI do Prisma para inspecionar o banco |
-| `pnpm test:concurrency` | dispara 50 requisições simultâneas para o mesmo horário e confirma que só uma vence — o teste que valida a garantia anti-double-booking |
+| `pnpm test:db:setup` | cria o database `projeto_prisma_test` (se não existir) e aplica as migrações nele — rodar uma vez antes de `pnpm test`, e de novo após criar migração nova |
+| `pnpm test` | roda a suíte inteira uma vez (`vitest run`) |
+| `pnpm test:watch` | roda a suíte em modo watch |
+| `pnpm test:concurrency` | script manual à parte (não faz parte da suíte): dispara 50 requisições simultâneas contra um servidor **já rodando** (`pnpm dev`) — útil pra ver a garantia anti-double-booking se comportar contra um servidor de verdade, não só em teste isolado |
 
 ## Estrutura do projeto
 
@@ -306,24 +309,55 @@ Depois de aplicar, é normal o CLI perguntar "Enter a name for the new migration
 parecer travado — é só o mesmo ruído tentando se re-detectar. `Ctrl+C` é seguro, a
 migração já foi aplicada (confirme com `npx prisma migrate status`).
 
-## Testando a garantia anti-double-booking
+## Testes automatizados
+
+[Vitest](https://vitest.dev). Banco de teste isolado (`projeto_prisma_test`, mesmo
+Postgres do `docker-compose.yml` — nunca toca no banco de dev), rodando as rotas via
+`app.inject()` do Fastify (sem porta de verdade, contra Prisma/Postgres reais — nada de
+mock no banco).
 
 ```bash
-pnpm db:seed              # garante que brb_joao e o admin de teste existem
-pnpm dev                   # em outro terminal
-pnpm test:concurrency       # dispara 50 requisições simultâneas para o mesmo horário
+pnpm db:up            # se ainda não estiver rodando
+pnpm test:db:setup     # cria o banco de teste + aplica migrações (uma vez)
+pnpm test               # roda a suíte inteira
 ```
 
-Saída esperada: exatamente 1× `201 Created`, 49× `409 SLOT_TAKEN`, 1 linha no banco.
-Configurável via `API_URL`, `CONCURRENCY`, `STAFF_EMAIL`, `STAFF_PASSWORD`.
+```
+tests/
+  setup/
+    db.ts         # resetDatabase() — TRUNCATE ... CASCADE em tudo, chamado no beforeEach
+    app.ts        # createTestApp() — uma instância nova do Fastify por teste
+    fixtures.ts   # createAdmin, createBarberWithService, createClientUser, staffLogin...
+    dates.ts      # nextWeekdayAt() — cai dentro da grade seg-sex dos fixtures
+  unit/            # lógica pura, sem banco: álgebra de intervalos, hash de senha, tokens
+  integration/     # contra o banco de teste: reserva/concorrência, ciclo de vida,
+                    # autenticação de equipe (login/bloqueio/refresh/rate limit), escopo por barbeiro
+```
+
+`fileParallelism: false` no `vitest.config.ts` — todo teste de integração bate no MESMO
+banco, então os arquivos rodam em sequência (evita um `resetDatabase()` de um arquivo
+atropelar o teste de outro). Testes de login criam uma instância nova do app a cada
+`it()` — o rate limiter guarda estado em memória por instância, então reusar o app entre
+testes de tentativa de senha faria as tentativas de um contarem pro limite do próximo.
+
+A cobertura hoje é deliberadamente focada no que é mais arriscado errar, não em cada
+endpoint: a constraint de exclusão sob concorrência real (50 requisições simultâneas —
+versão automatizada de `scripts/concurrency-test.ts`, que continua existindo à parte
+como ferramenta de carga manual contra um servidor de verdade), a máquina de estados do
+agendamento, e autenticação/segurança (bloqueio de conta, rotação e detecção de reuso de
+refresh token, rate limit, escopo por barbeiro). Módulos como produtos/pedidos/pacotes/
+fidelidade/relatórios ainda não têm teste automatizado — o padrão em `tests/setup/` já
+dá a base pra estender.
 
 ## O que ainda não existe
 
 Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, mas separa
 "roda no meu Postgres local" de "pronto pra produção":
 
-- **Testes automatizados:** tudo foi validado manualmente contra Postgres real durante o
-  desenvolvimento; não há suíte que rode sozinha nem CI (`.github/workflows` não existe).
+- **Sem CI** (`.github/workflows` não existe) — a suíte de testes existe mas ainda só
+  roda manualmente.
+- **Cobertura de teste parcial:** produtos/pedidos/pacotes/fidelidade/relatórios ainda
+  não têm teste automatizado — ver [Testes automatizados](#testes-automatizados).
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
 - **Escopo de API key ainda pequeno:** só cobre as duas rotas que o n8n usa hoje
