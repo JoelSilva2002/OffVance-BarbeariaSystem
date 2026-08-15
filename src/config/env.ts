@@ -12,6 +12,12 @@ const envSchema = z.object({
   // lista separada por vírgula (https://app.com,https://admin.app.com). Sem
   // isso definido em produção, CORS fecha por padrão — ver src/app.ts.
   CORS_ORIGINS: z.string().optional(),
+  // sem isso, notificações por e-mail ficam sempre FAILED (falha ao enviar,
+  // não ao subir o servidor — ver src/lib/email.ts) — um shop pode
+  // legitimamente optar por não oferecer e-mail, só WhatsApp.
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default("Barbearia <onboarding@resend.dev>"),
+  SHOP_NAME: z.string().default("Sua Barbearia"),
 });
 
 export const env = envSchema.parse(process.env);

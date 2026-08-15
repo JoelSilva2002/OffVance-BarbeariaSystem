@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
 import { createAppointment } from "../appointments/appointments.service.js";
@@ -11,7 +12,19 @@ export async function getMe(clientId: string) {
 }
 
 export async function updateMe(clientId: string, input: UpdateMeInput) {
-  await getMe(clientId);
+  const client = await getMe(clientId);
+
+  if (input.email !== undefined) {
+    try {
+      await prisma.user.update({ where: { id: client.userId }, data: { email: input.email } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new Problem(409, "EMAIL_TAKEN", "Esse e-mail já está em uso.");
+      }
+      throw error;
+    }
+  }
+
   return prisma.client.update({
     where: { id: clientId },
     data: {
@@ -21,6 +34,7 @@ export async function updateMe(clientId: string, input: UpdateMeInput) {
       allergyNotes: input.allergyNotes,
       hairNotes: input.hairNotes,
     },
+    include: { user: true },
   });
 }
 

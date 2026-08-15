@@ -60,6 +60,9 @@ Todas em `.env.example`. Nenhuma tem efeito além do que o nome sugere, exceto:
 | `DATABASE_URL` | sim | string de conexão do Postgres |
 | `JWT_SECRET` | só em produção | assina os tokens de cliente e de equipe. Em dev, cai num valor padrão inseguro com aviso — **a aplicação recusa subir com o valor padrão se `NODE_ENV=production`** |
 | `CORS_ORIGINS` | recomendado em produção | lista de origens de navegador autorizadas, separada por vírgula. Sem definir: em dev libera qualquer `localhost`/`127.0.0.1`; **em produção fecha todas as origens por padrão** (loga aviso, não derruba o processo — CORS fechado é seguro, só inconveniente) |
+| `RESEND_API_KEY` | recomendado para e-mail | chave da [Resend](https://resend.com/api-keys). Sem ela, notificações por e-mail ficam sempre `FAILED` (logado, servidor sobe normal — WhatsApp continua funcionando via n8n) |
+| `EMAIL_FROM` | não | remetente dos e-mails transacionais (padrão usa o domínio de teste da Resend) |
+| `SHOP_NAME` | não | nome exibido no cabeçalho dos e-mails (padrão `"Sua Barbearia"`) |
 | `PORT`, `HOST` | não | onde o Fastify escuta (padrão `3000` / `0.0.0.0`) |
 | `NODE_ENV` | não | `development` liga log bonito (`pino-pretty`) e as checagens de `JWT_SECRET`/`CORS_ORIGINS` acima |
 | `LOG_LEVEL` | não | nível do pino (`info` por padrão) |
@@ -258,6 +261,26 @@ pull para quando o push não é viável.
 Um n8n já roda em Docker nesta máquina (`docker ps` mostra o container `n8n`) — é o alvo
 natural para configurar um endpoint de teste.
 
+## Notificações por e-mail (Resend)
+
+WhatsApp e e-mail são entregues de dois jeitos diferentes, de propósito. WhatsApp precisa
+de um intermediário com acesso à API oficial — por isso vira `outbox_event` e o n8n
+entrega. E-mail transacional a própria API já resolve, então `notifications` com
+`channel: EMAIL` são enviadas **direto pela [Resend](https://resend.com)**, sem passar
+pelo outbox — ver `src/modules/notifications/notification-dispatcher.ts`.
+
+Um cliente com e-mail cadastrado (`PATCH /me { "email": "..." }`, sujeito ao mesmo
+unicidade de `POST /admins`/`POST /barbers` — `409 EMAIL_TAKEN` se já estiver em uso)
+recebe lembrete de agendamento e recibo **nos dois canais**, WhatsApp e e-mail, em
+notificações separadas (`src/modules/notifications/scheduler.ts`). Sem e-mail
+cadastrado, só WhatsApp — nunca falha por falta de endereço. O código de login (OTP)
+continua só por WhatsApp: nesse momento pode nem existir cliente ainda para se buscar um
+e-mail.
+
+Sem `RESEND_API_KEY` configurada, todo envio de e-mail falha (`status: FAILED`,
+logado no console com o motivo) — o resto do sistema continua funcionando normalmente,
+é só o canal de e-mail que fica inerte até a chave ser configurada.
+
 ## Migrações e a pegadinha do `time_range`
 
 A tabela `appointments` tem uma coluna gerada (`time_range tstzrange GENERATED ALWAYS
@@ -306,7 +329,6 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
 - **Escopo de API key ainda pequeno:** só cobre as duas rotas que o n8n usa hoje
   (`events:read`, `notifications:write`) — não dá pra emitir uma chave que, por exemplo,
   crie agendamentos em nome do sistema.
-- **E-mail como canal de notificação:** só WhatsApp está de fato ligado ao outbox.
 - **Sem expiração de pontos de fidelidade** nem limpeza de refresh tokens expirados na
   tabela (acumulam, não afeta segurança).
 - **Sem `Dockerfile` da própria API** — só o Postgres está containerizado; rodar a API

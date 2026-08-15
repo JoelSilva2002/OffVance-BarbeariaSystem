@@ -2,6 +2,9 @@ import { z } from "zod";
 
 export const updateMeSchema = z.object({
   fullName: z.string().min(1).optional(),
+  // cadastrar e-mail liga notificações por e-mail automaticamente, além do
+  // WhatsApp — ver scheduleReminder/scheduleReceipt em notifications/scheduler.ts
+  email: z.string().email().nullable().optional(),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   preferredBarberId: z.string().nullable().optional(),
   allergyNotes: z.string().max(1000).nullable().optional(),

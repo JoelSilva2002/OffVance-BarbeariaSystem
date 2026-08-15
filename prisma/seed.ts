@@ -127,8 +127,14 @@ async function main() {
 
   const userMaria = await prisma.user.upsert({
     where: { id: "usr_client_maria" },
-    update: {},
-    create: { id: "usr_client_maria", phone: "+5511999990099", role: "CLIENT", status: "ACTIVE" },
+    update: { email: "maria@example.com" },
+    create: {
+      id: "usr_client_maria",
+      phone: "+5511999990099",
+      email: "maria@example.com",
+      role: "CLIENT",
+      status: "ACTIVE",
+    },
   });
 
   await prisma.client.upsert({
