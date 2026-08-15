@@ -34,6 +34,11 @@ model User {
   passwordHash String?    @map("password_hash")
   role         UserRole
   status       UserStatus @default(ACTIVE)
+  // Bloqueio de conta por tentativa de senha errada (login de equipe) —
+  // camada complementar ao rate limit por IP: pega o ataque lento/distribuído
+  // contra UMA conta específica, que o limite por IP não enxerga.
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until") @db.Timestamptz(3)
   createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 

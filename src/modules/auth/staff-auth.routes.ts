@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { Problem } from "../../lib/problem.js";
 import { requireAdminAuth } from "../../plugins/auth.js";
 import {
   createAdminSchema,
@@ -22,13 +23,37 @@ import {
 const ACCESS_TOKEN_TTL = "30m";
 
 export async function staffAuthRoutes(app: FastifyInstance) {
-  app.post("/auth/staff/login", async (request, reply) => {
-    const body = staffLoginSchema.parse(request.body);
-    const { userId, role, barberId } = await staffLogin(body.email, body.password);
-    const accessToken = await reply.jwtSign({ sub: userId, role, barberId }, { expiresIn: ACCESS_TOKEN_TTL });
-    const refreshToken = await issueRefreshToken(userId);
-    reply.send({ accessToken, refreshToken, role, barberId });
-  });
+  // Camada 1 de defesa contra bruteforce: limite por IP, pega um ataque
+  // rápido de um único lugar. Camada 2 (bloqueio de conta após tentativas
+  // erradas, pega ataque lento/distribuído contra UMA conta) mora em
+  // staffLogin — ver staff-auth.service.ts.
+  app.post(
+    "/auth/staff/login",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+          // Devolve um Problem de verdade (não um objeto solto) para o
+          // errorHandlerPlugin reconhecer via `instanceof Problem` e formatar
+          // como todo o resto da API — senão cai no fallback genérico de 500.
+          errorResponseBuilder: (_request, context) =>
+            new Problem(
+              429,
+              "RATE_LIMITED",
+              `Muitas tentativas de login a partir deste endereço. Tente de novo em ${Math.ceil(context.ttl / 1000)}s.`,
+            ),
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = staffLoginSchema.parse(request.body);
+      const { userId, role, barberId } = await staffLogin(body.email, body.password);
+      const accessToken = await reply.jwtSign({ sub: userId, role, barberId }, { expiresIn: ACCESS_TOKEN_TTL });
+      const refreshToken = await issueRefreshToken(userId);
+      reply.send({ accessToken, refreshToken, role, barberId });
+    },
+  );
 
   app.post("/auth/staff/refresh", async (request, reply) => {
     const body = refreshTokenSchema.parse(request.body);

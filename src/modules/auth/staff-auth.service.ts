@@ -12,6 +12,16 @@ interface StaffSession {
   barberId?: string;
 }
 
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
+/**
+ * Bloqueio de conta — camada complementar ao rate limit por IP (registrado
+ * na rota): o limite por IP para um ataque rápido de um único lugar; isto
+ * aqui para um ataque lento ou distribuído mirando UMA conta específica.
+ * Conta bloqueada nem chega a rodar scrypt na senha — 401 direto, sem
+ * gastar CPU tentando validar algo que já sabemos que vai falhar.
+ */
 export async function staffLogin(email: string, password: string) {
   const user = await prisma.user.findUnique({ where: { email }, include: { barber: true } });
 
@@ -22,8 +32,37 @@ export async function staffLogin(email: string, password: string) {
   if (user.status !== "ACTIVE") {
     throw new Problem(403, "ACCOUNT_INACTIVE", "Esta conta está inativa.");
   }
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+    throw new Problem(
+      429,
+      "ACCOUNT_LOCKED",
+      `Muitas tentativas com senha errada. Tente de novo em ${minutesLeft} min.`,
+    );
+  }
+
   if (!verifyPassword(password, user.passwordHash)) {
+    const attempts = user.failedLoginAttempts + 1;
+    const lockingOut = attempts >= MAX_FAILED_ATTEMPTS;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: lockingOut ? 0 : attempts,
+        lockedUntil: lockingOut ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null,
+      },
+    });
+    if (lockingOut) {
+      throw new Problem(
+        429,
+        "ACCOUNT_LOCKED",
+        `Muitas tentativas com senha errada. Tente de novo em ${LOCKOUT_MINUTES} min.`,
+      );
+    }
     throw new Problem(401, "INVALID_CREDENTIALS", "E-mail ou senha inválidos.");
+  }
+
+  if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+    await prisma.user.update({ where: { id: user.id }, data: { failedLoginAttempts: 0, lockedUntil: null } });
   }
 
   return { userId: user.id, role: user.role as "ADMIN" | "BARBER", barberId: user.barber?.id };

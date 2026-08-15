@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import rateLimit from "@fastify/rate-limit";
 import { env } from "./config/env.js";
 import { errorHandlerPlugin } from "./plugins/error-handler.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
@@ -34,6 +35,9 @@ export function buildApp() {
   app.register(sensible);
   app.register(cors, { origin: true });
   app.register(jwt, { secret: env.JWT_SECRET });
+  // global: false — só entra em vigor nas rotas que pedirem explicitamente
+  // via `config.rateLimit` (hoje: login de equipe). Ver staff-auth.routes.ts.
+  app.register(rateLimit, { global: false });
   app.register(errorHandlerPlugin);
 
   app.register(healthRoutes);
