@@ -59,8 +59,9 @@ Todas em `.env.example`. Nenhuma tem efeito além do que o nome sugere, exceto:
 |---|---|---|
 | `DATABASE_URL` | sim | string de conexão do Postgres |
 | `JWT_SECRET` | só em produção | assina os tokens de cliente e de equipe. Em dev, cai num valor padrão inseguro com aviso — **a aplicação recusa subir com o valor padrão se `NODE_ENV=production`** |
+| `CORS_ORIGINS` | recomendado em produção | lista de origens de navegador autorizadas, separada por vírgula. Sem definir: em dev libera qualquer `localhost`/`127.0.0.1`; **em produção fecha todas as origens por padrão** (loga aviso, não derruba o processo — CORS fechado é seguro, só inconveniente) |
 | `PORT`, `HOST` | não | onde o Fastify escuta (padrão `3000` / `0.0.0.0`) |
-| `NODE_ENV` | não | `development` liga log bonito (`pino-pretty`) e a checagem do `JWT_SECRET` acima |
+| `NODE_ENV` | não | `development` liga log bonito (`pino-pretty`) e as checagens de `JWT_SECRET`/`CORS_ORIGINS` acima |
 | `LOG_LEVEL` | não | nível do pino (`info` por padrão) |
 
 ## Scripts
@@ -265,7 +266,6 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
 
 - **Testes automatizados:** tudo foi validado manualmente contra Postgres real durante o
   desenvolvimento; não há suíte que rode sozinha nem CI (`.github/workflows` não existe).
-- **CORS aberto** (`origin: true`) — precisa de allowlist antes de produção.
 - **Refresh token só para equipe** — o portal do cliente usa uma sessão única de 30 dias,
   sem rotação.
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de

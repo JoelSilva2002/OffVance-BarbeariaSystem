@@ -9,6 +9,9 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória"),
   JWT_SECRET: z.string().min(16).default(DEV_JWT_SECRET),
+  // lista separada por vírgula (https://app.com,https://admin.app.com). Sem
+  // isso definido em produção, CORS fecha por padrão — ver src/app.ts.
+  CORS_ORIGINS: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
