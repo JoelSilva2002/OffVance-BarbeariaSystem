@@ -16,8 +16,10 @@ describe("ciclo de vida do agendamento", () => {
   let app: FastifyInstance;
   let accessToken: string;
   let barberId: string;
+  let barberDisplayName: string;
   let serviceId: string;
   let clientId: string;
+  let clientFullName: string;
   let clientPhone: string;
 
   beforeEach(async () => {
@@ -27,8 +29,10 @@ describe("ciclo de vida do agendamento", () => {
     const { barber, service } = await createBarberWithService();
     const { user: clientUser, client } = await createClientUser();
     barberId = barber.id;
+    barberDisplayName = barber.displayName;
     serviceId = service.id;
     clientId = client.id;
+    clientFullName = client.fullName!;
     clientPhone = clientUser.phone;
 
     app = await createTestApp();
@@ -53,6 +57,22 @@ describe("ciclo de vida do agendamento", () => {
     expect(res.statusCode).toBe(201);
     return res.json();
   }
+
+  it("listagem e detalhe trazem o nome do cliente e do barbeiro, não só os ids", async () => {
+    const appointment = await createAppointment();
+
+    const listRes = await app.inject({ method: "GET", url: `/appointments?clientId=${clientId}`, headers: authHeader() });
+    expect(listRes.statusCode).toBe(200);
+    const listed = listRes.json().appointments[0];
+    expect(listed.client.fullName).toBe(clientFullName);
+    expect(listed.client.user.phone).toBe(clientPhone);
+    expect(listed.barber.displayName).toBe(barberDisplayName);
+
+    const detailRes = await app.inject({ method: "GET", url: `/appointments/${appointment.id}`, headers: authHeader() });
+    expect(detailRes.statusCode).toBe(200);
+    expect(detailRes.json().client.fullName).toBe(clientFullName);
+    expect(detailRes.json().barber.displayName).toBe(barberDisplayName);
+  });
 
   it("segue AGENDADO → CONFIRMADO → EM_ATENDIMENTO → CONCLUÍDO, com histórico completo", async () => {
     const appointment = await createAppointment();

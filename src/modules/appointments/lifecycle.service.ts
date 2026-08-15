@@ -277,8 +277,24 @@ export async function rescheduleAppointment(
   }
 }
 
+/**
+ * Consulta própria (não reusa getAppointmentOrThrow) porque só esta rota
+ * precisa do nome do cliente/barbeiro pra exibição — anexar esse JOIN no
+ * helper interno encareceria toda transição de status à toa, já que elas só
+ * leem status/clientId/items. `select` explícito no User (não `include`)
+ * pra nunca vazar passwordHash e afins.
+ */
 export async function getAppointment(id: string) {
-  return getAppointmentOrThrow(prisma, id);
+  const appointment = await prisma.appointment.findUnique({
+    where: { id },
+    include: {
+      items: true,
+      client: { include: { user: { select: { phone: true } } } },
+      barber: { select: { id: true, displayName: true } },
+    },
+  });
+  if (!appointment) throw new Problem(404, "APPOINTMENT_NOT_FOUND", "Agendamento não encontrado.");
+  return appointment;
 }
 
 export async function getAppointmentHistory(id: string) {

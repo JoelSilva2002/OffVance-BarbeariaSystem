@@ -10,6 +10,7 @@ import { healthRoutes } from "./modules/health/health.routes.js";
 import { schedulingRoutes } from "./modules/scheduling/scheduling.routes.js";
 import { appointmentsRoutes } from "./modules/appointments/appointments.routes.js";
 import { barbersRoutes } from "./modules/barbers/barbers.routes.js";
+import { clientsRoutes } from "./modules/clients/clients.routes.js";
 import { catalogRoutes } from "./modules/catalog/catalog.routes.js";
 import { webhookEndpointsRoutes } from "./modules/outbox/webhook-endpoints.routes.js";
 import { eventsRoutes } from "./modules/outbox/events.routes.js";
@@ -44,6 +45,7 @@ export function buildApp() {
 
   app.register(healthRoutes);
   app.register(barbersRoutes);
+  app.register(clientsRoutes);
   app.register(catalogRoutes);
   app.register(schedulingRoutes);
   app.register(appointmentsRoutes);

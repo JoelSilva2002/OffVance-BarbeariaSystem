@@ -72,7 +72,14 @@ export async function appointmentsRoutes(app: FastifyInstance) {
           lte: query.to ? new Date(query.to) : undefined,
         },
       },
-      include: { items: true },
+      include: {
+        items: true,
+        // nome pra exibição na agenda — client é opcional (bloqueio manual
+        // não tem cliente), select explícito no User pra nunca vazar
+        // passwordHash e afins.
+        client: { include: { user: { select: { phone: true } } } },
+        barber: { select: { id: true, displayName: true } },
+      },
       orderBy: { startsAt: "asc" },
       take: query.limit,
     });

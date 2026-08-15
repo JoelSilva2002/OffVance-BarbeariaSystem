@@ -102,6 +102,7 @@ src/
     scheduling/             # camada 1: cálculo de disponibilidade
     appointments/            # camada 2/3: reserva transacional + ciclo de vida
     barbers/, catalog/       # CRUD de colaboradores e catálogo de serviços
+    clients/                 # busca de cliente por nome/telefone + cadastro de walk-in
     auth/, portal/           # login (OTP + staff) e as rotas /me/* do cliente
     outbox/                   # outbox transacional + webhooks para o n8n
     notifications/            # lembretes/confirmação automática agendados
@@ -277,6 +278,7 @@ própria agenda) · 🔒 só `ADMIN` · 🤖 aceita também API key com o escopo
 
 | | Rota | Descrição |
 |---|---|---|
+| 👤 | `GET /clients?search=` · `POST /clients` | achar cliente por nome/telefone ou cadastrar um avulso (walk-in) |
 | 🌐 | `GET /packages` · `GET /packages/:id` | catálogo de pacotes |
 | 🔒🤖 | `POST`/`PATCH /packages` | definir pacote (`catalog:write`) |
 | 👤🤖 | `POST`/`GET /clients/:id/packages` | vender/consultar pacote de um cliente (`financeiro:write`/`financeiro:read`) |
@@ -492,10 +494,30 @@ compose (`/health` e `/health/db` respondendo, `HEALTHCHECK` do próprio Docker 
 `dumb-init` + `SIGTERM` (processo encerra sozinho em ~1.6s, sem precisar de `SIGKILL` —
 é o `close-with-grace` de `src/server.ts` funcionando dentro do container).
 
+## Painel da equipe (frontend)
+
+Em `frontend/` — projeto próprio (Vite + React + TypeScript + Tailwind), **não** faz
+parte do workspace pnpm da API (tem seu próprio `pnpm-workspace.yaml` vazio, só pra se
+isolar do da raiz). Consome a API como qualquer outro cliente HTTP, sem acesso direto ao
+banco.
+
+```bash
+cd frontend
+cp .env.example .env   # VITE_API_URL aponta pro backend local por padrão
+pnpm install
+pnpm dev                 # http://localhost:5173
+```
+
+Login de equipe (e-mail+senha), com sessão restaurada automaticamente após F5 via
+refresh token guardado no `localStorage` — o access token fica só em memória. Em
+construção: agenda do dia, colaboradores/catálogo e financeiro ainda são placeholders.
+
 ## O que ainda não existe
 
 Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, mas separa
 "roda no meu Postgres local" de "pronto pra produção":
 
+- **Painel da equipe incompleto** — só o login está pronto; agenda, colaboradores/
+  catálogo e financeiro ainda não têm interface (ver seção acima).
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
