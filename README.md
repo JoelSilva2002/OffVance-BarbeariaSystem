@@ -163,19 +163,38 @@ humano logando (`docs/ARQUITETURA.md` §02). `POST /api-keys` (`ADMIN`) gera uma
 token. Listagens mostram só `keyPrefix` (os 8 primeiros caracteres) para identificar
 qual chave é qual.
 
-Escopos hoje (`src/modules/apikeys/scopes.ts`): `events:read` (`GET /events`, o fallback
-de pull do outbox) e `notifications:write` (`PATCH /notifications/:id`, callback
-reportando o resultado real de uma entrega). Essas duas rotas aceitam **ou** uma sessão
-de equipe **ou** uma API key com o escopo certo — `requireStaffOrApiKey` em
-`src/plugins/auth.ts` decide qual caminho seguir pelo prefixo do token, sem misturar os
-dois. Chave sem o escopo necessário vira `403 INSUFFICIENT_SCOPE` (a chave é válida, só
-não pode fazer aquilo) — diferente de `401`, que é chave ausente/inválida/revogada.
+Escopos hoje (`src/modules/apikeys/scopes.ts`): `events:read` (`GET /events`, fallback de
+pull do outbox), `notifications:write` (`PATCH /notifications/:id`, callback reportando
+o resultado real de uma entrega), `appointments:read` e `appointments:write` (toda a
+família `/appointments/*` — criar, listar, ver e tocar o ciclo de vida inteiro). Uma
+chave com `appointments:write` tem o mesmo poder de um `ADMIN` sobre agendamentos: é o
+que permite o n8n criar, confirmar ou cancelar em nome do sistema quando o cliente
+responde no WhatsApp — não existe hoje um escopo mais estreito que isso.
+
+Todas essas rotas aceitam **ou** uma sessão de equipe **ou** uma API key com o escopo
+certo — `requireStaffOrApiKey` em `src/plugins/auth.ts` decide qual caminho seguir pelo
+prefixo do token, sem misturar os dois. Chave sem o escopo necessário vira
+`403 INSUFFICIENT_SCOPE` (a chave é válida, só não pode fazer aquilo) — diferente de
+`401`, que é chave ausente/inválida/revogada.
+
+**Quem age nunca vem do corpo da requisição.** Os endpoints de ciclo de vida do
+agendamento (`confirm`/`cancel`/`.../reschedule` etc.) tinham um campo `actorType` no
+corpo que o próprio chamador declarava — um resquício de antes de existir autenticação
+de equipe de verdade. Isso foi removido: `resolveActingIdentity`
+(`src/plugins/auth.ts`) deriva `actorType`/`actorId` sempre da credencial autenticada —
+`ADMIN`/`BARBER` de uma sessão de equipe, `API` (com o id da própria chave) de uma API
+key. Um `BARBER` não pode mais se declarar `ADMIN` no payload, e uma API key não pode se
+passar por `CLIENT` pra herdar as regras de prazo mais frouxas que valem só pra sessão
+autenticada do portal (`/me/appointments/*`).
 
 ```bash
 curl -X POST http://localhost:3000/api-keys \
   -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"name":"n8n produção","scopes":["events:read","notifications:write"]}'
+  -d '{"name":"n8n produção","scopes":["events:read","notifications:write","appointments:write"]}'
 # {"id":"...","keyPrefix":"sk_a1b2c3d4","key":"sk_a1b2c3d4...(guarde agora — não aparece de novo)"}
+
+curl -X POST http://localhost:3000/appointments/apt_123/confirm \
+  -H "Authorization: Bearer sk_a1b2c3d4..."
 ```
 
 ## Referência de endpoints
@@ -191,14 +210,14 @@ própria agenda) · 🔒 só `ADMIN` · 🤖 aceita também API key com o escopo
 | 🌐 | `GET /availability/days` | dias do mês com pelo menos uma vaga |
 | 🌐 | `GET /availability/slots` | horários disponíveis (aceita `barberId=any`) |
 
-### Agendamentos (equipe)
+### Agendamentos (equipe ou máquina)
 
 | | Rota | Descrição |
 |---|---|---|
-| 👤 | `POST /appointments` | cria em nome de um cliente |
-| 👤 | `GET /appointments` | lista (filtros: barbeiro, cliente, status, período) |
-| 👤 | `GET /appointments/:id` · `.../history` | detalhe e trilha de auditoria |
-| 👤 | `POST .../confirm` · `.../check-in` · `.../complete` · `.../cancel` · `.../no-show` · `.../reschedule` | transições do ciclo de vida |
+| 👤🤖 | `POST /appointments` | cria em nome de um cliente (escopo `appointments:write`) |
+| 👤🤖 | `GET /appointments` | lista (filtros: barbeiro, cliente, status, período; escopo `appointments:read`) |
+| 👤🤖 | `GET /appointments/:id` · `.../history` | detalhe e trilha de auditoria (`appointments:read`) |
+| 👤🤖 | `POST .../confirm` · `.../check-in` · `.../complete` · `.../cancel` · `.../no-show` · `.../reschedule` | transições do ciclo de vida (`appointments:write`) |
 
 ### Portal do cliente (`/me/*`, sessão OTP)
 
@@ -367,9 +386,10 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
   não têm teste automatizado — ver [Testes automatizados](#testes-automatizados).
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
-- **Escopo de API key ainda pequeno:** só cobre as duas rotas que o n8n usa hoje
-  (`events:read`, `notifications:write`) — não dá pra emitir uma chave que, por exemplo,
-  crie agendamentos em nome do sistema.
+- **API key ainda não cobre barbeiros/catálogo/financeiro** — só agendamentos, eventos e
+  notificações (`appointments:*`, `events:read`, `notifications:write`). Uma integração
+  que precise, por exemplo, consultar preço de serviço ainda depende de sessão de
+  equipe.
 - **Sem expiração de pontos de fidelidade** nem limpeza de refresh tokens expirados na
   tabela (acumulam, não afeta segurança).
 - **Sem `Dockerfile` da própria API** — só o Postgres está containerizado; rodar a API

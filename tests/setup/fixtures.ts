@@ -139,3 +139,34 @@ export async function staffLogin(app: FastifyInstance, email: string, password: 
   }
   return res.json() as { accessToken: string; refreshToken: string; role: string; barberId?: string };
 }
+
+/** Cria uma API key com os escopos dados — precisa de um accessToken de ADMIN. */
+export async function createApiKey(app: FastifyInstance, adminAccessToken: string, scopes: string[]) {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api-keys",
+    headers: { authorization: `Bearer ${adminAccessToken}` },
+    payload: { name: `chave de teste (${scopes.join(",")})`, scopes },
+  });
+  if (res.statusCode !== 201) {
+    throw new Error(`createApiKey falhou (${res.statusCode}): ${res.body}`);
+  }
+  return res.json() as { id: string; key: string; scopes: string[] };
+}
+
+/** Fluxo OTP completo (pede código, lê do banco, verifica) — sessão de CLIENTE de verdade, não simulada. */
+export async function clientLogin(app: FastifyInstance, phone: string) {
+  const requestRes = await app.inject({ method: "POST", url: "/auth/otp/request", payload: { phone } });
+  if (requestRes.statusCode !== 202) {
+    throw new Error(`otp/request falhou (${requestRes.statusCode}): ${requestRes.body}`);
+  }
+
+  const otp = await prisma.otpCode.findFirst({ where: { phone, consumedAt: null }, orderBy: { createdAt: "desc" } });
+  if (!otp) throw new Error("OTP não encontrado no banco após /auth/otp/request");
+
+  const verifyRes = await app.inject({ method: "POST", url: "/auth/otp/verify", payload: { phone, code: otp.code } });
+  if (verifyRes.statusCode !== 200) {
+    throw new Error(`otp/verify falhou (${verifyRes.statusCode}): ${verifyRes.body}`);
+  }
+  return verifyRes.json() as { accessToken: string; refreshToken: string; client: { id: string } };
+}

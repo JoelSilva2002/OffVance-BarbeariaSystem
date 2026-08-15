@@ -1,4 +1,5 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
+import type { ActorType } from "@prisma/client";
 import { Problem } from "../lib/problem.js";
 import { prisma } from "../lib/prisma.js";
 import { hashApiKey, isApiKeyFormat } from "../lib/tokens.js";
@@ -144,4 +145,45 @@ export function requireStaffOrApiKey(...requiredScopes: ApiKeyScope[]) {
     }
     return requireStaffAuth(request, reply);
   };
+}
+
+/**
+ * Identidade normalizada de "quem age", independente de ter vindo de sessão
+ * de equipe ou de API key — usada onde uma rota (hoje: agendamentos) aceita
+ * os dois caminhos e precisa de UMA resposta pra "quem é o ator" e "esse
+ * ator está restrito a um barbeiro específico".
+ *
+ * `actorType`/`actorId` daqui é o que vai pro histórico de status — nunca
+ * mais lido do corpo da requisição (um chamador podia declarar
+ * `actorType: "ADMIN"` livremente antes disso existir; agora só a
+ * autenticação decide).
+ */
+export interface ActingIdentity {
+  actorType: ActorType;
+  actorId?: string;
+  barberId?: string;
+  /** true pra ADMIN e API key — sem restrição de agenda própria. */
+  unrestricted: boolean;
+}
+
+export function resolveActingIdentity(request: FastifyRequest): ActingIdentity {
+  if (request.authApiKey) {
+    return { actorType: "API", actorId: request.authApiKey.apiKeyId, unrestricted: true };
+  }
+  if (request.authStaff) {
+    return {
+      actorType: request.authStaff.role,
+      actorId: request.authStaff.sub,
+      barberId: request.authStaff.barberId,
+      unrestricted: request.authStaff.role === "ADMIN",
+    };
+  }
+  throw new Problem(401, "UNAUTHENTICATED", "Faça login para continuar.");
+}
+
+export function assertActingScope(identity: ActingIdentity, targetBarberId: string) {
+  if (identity.unrestricted) return;
+  if (identity.barberId !== targetBarberId) {
+    throw new Problem(403, "FORBIDDEN", "Você só pode acessar informações da sua própria agenda.");
+  }
 }

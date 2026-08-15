@@ -86,13 +86,17 @@ export async function createMyAppointment(clientId: string, input: CreateMyAppoi
     clientNotes = clientNotes ?? source.clientNotes ?? undefined;
   }
 
-  return createAppointment({
-    barberId: barberId!,
+  return createAppointment(
+    {
+      barberId: barberId!,
+      clientId,
+      serviceIds: serviceIds!,
+      startsAt: input.startsAt,
+      clientNotes,
+    },
+    "CLIENT",
     clientId,
-    serviceIds: serviceIds!,
-    startsAt: input.startsAt,
-    clientNotes,
-  });
+  );
 }
 
 export async function cancelMyAppointment(clientId: string, appointmentId: string, reason?: string) {
@@ -106,5 +110,5 @@ export async function rescheduleMyAppointment(
   input: { startsAt: string; barberId?: string },
 ) {
   await assertOwnAppointment(clientId, appointmentId);
-  return rescheduleAppointment(appointmentId, { ...input, actorType: "CLIENT", actorId: clientId });
+  return rescheduleAppointment(appointmentId, "CLIENT", clientId, input);
 }

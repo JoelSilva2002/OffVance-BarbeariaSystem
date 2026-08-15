@@ -5,7 +5,7 @@ import { Problem } from "../../lib/problem.js";
 import { getShopSettings } from "../scheduling/shop-settings.service.js";
 import { isExclusionViolation, lockBarberDay } from "./concurrency.js";
 import { validateSlot } from "./slot-validation.js";
-import type { CompletionPaymentInput, RescheduleInput } from "./lifecycle.schema.js";
+import type { CompletionPaymentInput, RescheduleBody } from "./lifecycle.schema.js";
 import { recordAppointmentEvent } from "../outbox/outbox.recorder.js";
 import { APPOINTMENT_EVENT } from "../outbox/event-types.js";
 import { appointmentEventPayload } from "../outbox/appointment-payload.js";
@@ -187,8 +187,13 @@ export async function markNoShow(id: string, actorType: ActorType, actorId?: str
  * §03, "casos de borda" — remarcação não deleta/recria). Volta para
  * AGENDADO: uma confirmação anterior era para o horário antigo.
  */
-export async function rescheduleAppointment(id: string, input: RescheduleInput) {
-  const newStartsAt = new Date(input.startsAt);
+export async function rescheduleAppointment(
+  id: string,
+  actorType: ActorType,
+  actorId: string | undefined,
+  body: RescheduleBody,
+) {
+  const newStartsAt = new Date(body.startsAt);
   if (Number.isNaN(newStartsAt.getTime())) {
     throw new Problem(422, "INVALID_DATE", "`startsAt` inválido.");
   }
@@ -200,7 +205,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput) 
         if (!RESCHEDULABLE_FROM.includes(appointment.status)) invalidTransition(appointment.status, "remarcar");
 
         const settings = await getShopSettings(tx);
-        if (input.actorType === "CLIENT") {
+        if (actorType === "CLIENT") {
           const deadline = appointment.startsAt.getTime() - settings.rescheduleDeadlineHours * 3_600_000;
           if (Date.now() > deadline) {
             throw new Problem(
@@ -211,7 +216,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput) 
           }
         }
 
-        const targetBarberId = input.barberId ?? appointment.barberId;
+        const targetBarberId = body.barberId ?? appointment.barberId;
         const localDate = DateTime.fromJSDate(newStartsAt, { zone: "utc" }).setZone(settings.timezone).toISODate()!;
         await lockBarberDay(tx, targetBarberId, localDate);
 
@@ -226,7 +231,7 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput) 
         );
 
         const oldStartsAt = appointment.startsAt;
-        const barberChanged = input.barberId !== undefined && input.barberId !== appointment.barberId;
+        const barberChanged = body.barberId !== undefined && body.barberId !== appointment.barberId;
 
         const updated = await tx.appointment.update({
           where: { id },
@@ -246,8 +251,8 @@ export async function rescheduleAppointment(id: string, input: RescheduleInput) 
           id,
           appointment.status,
           "AGENDADO",
-          input.actorType,
-          input.actorId,
+          actorType,
+          actorId,
           `Remarcado de ${oldStartsAt.toISOString()} para ${newStartsAt.toISOString()}${barberChanged ? " (barbeiro alterado)" : ""}`,
         );
 

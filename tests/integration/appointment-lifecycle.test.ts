@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { resetDatabase } from "../setup/db.js";
 import { createTestApp } from "../setup/app.js";
-import { createAdmin, createBarberWithService, createClientUser, seedShopSettings, staffLogin } from "../setup/fixtures.js";
+import {
+  clientLogin,
+  createAdmin,
+  createBarberWithService,
+  createClientUser,
+  seedShopSettings,
+  staffLogin,
+} from "../setup/fixtures.js";
 import { nextWeekdayAt } from "../setup/dates.js";
 
 describe("ciclo de vida do agendamento", () => {
@@ -11,16 +18,18 @@ describe("ciclo de vida do agendamento", () => {
   let barberId: string;
   let serviceId: string;
   let clientId: string;
+  let clientPhone: string;
 
   beforeEach(async () => {
     await resetDatabase();
     await seedShopSettings();
     const admin = await createAdmin();
     const { barber, service } = await createBarberWithService();
-    const { client } = await createClientUser();
+    const { user: clientUser, client } = await createClientUser();
     barberId = barber.id;
     serviceId = service.id;
     clientId = client.id;
+    clientPhone = clientUser.phone;
 
     app = await createTestApp();
     ({ accessToken } = await staffLogin(app, admin.user.email!, admin.password));
@@ -109,11 +118,16 @@ describe("ciclo de vida do agendamento", () => {
     await seedShopSettings({ cancelDeadlineHours: 999_999 });
     const appointment = await createAppointment();
 
+    // actorType não vem mais do corpo — é derivado da autenticação. Pra
+    // testar o caminho do CLIENTE de verdade, precisa de uma sessão de
+    // cliente de verdade (portal), não só declarar "actorType: CLIENT" no
+    // payload de uma rota de equipe.
+    const { accessToken: clientToken } = await clientLogin(app, clientPhone);
     const asClient = await app.inject({
       method: "POST",
-      url: `/appointments/${appointment.id}/cancel`,
-      headers: authHeader(),
-      payload: { actorType: "CLIENT" },
+      url: `/me/appointments/${appointment.id}/cancel`,
+      headers: { authorization: `Bearer ${clientToken}` },
+      payload: {},
     });
     expect(asClient.statusCode).toBe(409);
     expect(asClient.json().title).toBe("CANCEL_DEADLINE_PASSED");
@@ -122,7 +136,7 @@ describe("ciclo de vida do agendamento", () => {
       method: "POST",
       url: `/appointments/${appointment.id}/cancel`,
       headers: authHeader(),
-      payload: { actorType: "ADMIN" },
+      payload: {},
     });
     expect(asAdmin.statusCode).toBe(200);
     expect(asAdmin.json().status).toBe("CANCELADO");

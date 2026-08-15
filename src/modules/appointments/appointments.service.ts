@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type ActorType } from "@prisma/client";
 import { DateTime } from "luxon";
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
@@ -20,7 +20,11 @@ const MAX_CODE_RETRIES = 3;
  * do banco (nunca do payload). A camada 3 — a constraint de exclusão — é o
  * que garante correção mesmo se esta função tiver um bug.
  */
-export async function createAppointment(input: CreateAppointmentInput) {
+export async function createAppointment(
+  input: CreateAppointmentInput,
+  actorType: ActorType = "API",
+  actorId?: string,
+) {
   const startsAt = new Date(input.startsAt);
   if (Number.isNaN(startsAt.getTime())) {
     throw new Problem(422, "INVALID_DATE", "`startsAt` inválido.");
@@ -28,7 +32,7 @@ export async function createAppointment(input: CreateAppointmentInput) {
 
   for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
     try {
-      return await attemptCreate(input, startsAt);
+      return await attemptCreate(input, startsAt, actorType, actorId);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         continue; // colisão de `code` — tenta de novo com um código novo
@@ -40,7 +44,7 @@ export async function createAppointment(input: CreateAppointmentInput) {
   throw new Problem(500, "CODE_GENERATION_FAILED", "Não foi possível gerar um código único. Tente novamente.");
 }
 
-async function attemptCreate(input: CreateAppointmentInput, startsAt: Date) {
+async function attemptCreate(input: CreateAppointmentInput, startsAt: Date, actorType: ActorType, actorId?: string) {
   try {
     return await prisma.$transaction(
       async (tx) => {
@@ -90,7 +94,8 @@ async function attemptCreate(input: CreateAppointmentInput, startsAt: Date) {
             appointmentId: appointment.id,
             fromStatus: null,
             toStatus: "AGENDADO",
-            actorType: "API",
+            actorType,
+            actorId,
             reason: "Criado",
           },
         });

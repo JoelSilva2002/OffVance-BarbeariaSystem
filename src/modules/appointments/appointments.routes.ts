@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { AppointmentStatus } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
-import { assertBarberScope, requireStaffAuth, type StaffTokenPayload } from "../../plugins/auth.js";
+import { assertActingScope, resolveActingIdentity, requireStaffOrApiKey, type ActingIdentity } from "../../plugins/auth.js";
 import { createAppointmentSchema, listAppointmentsQuerySchema } from "./appointments.schema.js";
 import { createAppointment } from "./appointments.service.js";
 import {
@@ -24,39 +24,43 @@ import {
   rescheduleAppointment,
 } from "./lifecycle.service.js";
 
-/** ADMIN passa sempre; BARBER só se o agendamento for da própria agenda. */
-async function assertOwnsAppointment(staff: StaffTokenPayload, appointmentId: string) {
-  if (staff.role === "ADMIN") return;
+/** ADMIN e API key passam sempre; BARBER só se o agendamento for da própria agenda. */
+async function assertOwnsAppointment(identity: ActingIdentity, appointmentId: string) {
+  if (identity.unrestricted) return;
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
     select: { barberId: true },
   });
   if (!appointment) throw new Problem(404, "APPOINTMENT_NOT_FOUND", "Agendamento não encontrado.");
-  assertBarberScope(staff, appointment.barberId);
+  assertActingScope(identity, appointment.barberId);
 }
 
 /**
- * Toda rota aqui é uso de equipe (agendar em nome de um cliente, ver a
- * agenda inteira, tocar o ciclo de vida) — o cliente usa /me/appointments/*.
- * Dentro disso, BARBER está escopado à própria agenda; ADMIN vê tudo.
+ * Toda rota aqui é uso de equipe OU de máquina (n8n reagindo a uma resposta
+ * de WhatsApp) — o cliente usa /me/appointments/*. `actorType`/`actorId` do
+ * histórico de status vêm SEMPRE da identidade autenticada
+ * (resolveActingIdentity), nunca do corpo da requisição — uma API key ou
+ * um BARBER não podem se declarar "ADMIN" ou "CLIENT" no payload.
+ * BARBER fica escopado à própria agenda; ADMIN e API key veem tudo.
  */
 export async function appointmentsRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", requireStaffAuth);
+  const readGuard = { preHandler: requireStaffOrApiKey("appointments:read") };
+  const writeGuard = { preHandler: requireStaffOrApiKey("appointments:write") };
 
-  app.post("/appointments", async (request, reply) => {
+  app.post("/appointments", writeGuard, async (request, reply) => {
     const body = createAppointmentSchema.parse(request.body);
-    const staff = request.authStaff!;
-    if (staff.role === "BARBER" && body.barberId !== staff.barberId) {
+    const identity = resolveActingIdentity(request);
+    if (!identity.unrestricted && body.barberId !== identity.barberId) {
       throw new Problem(403, "FORBIDDEN", "Você só pode criar agendamentos na sua própria agenda.");
     }
-    const appointment = await createAppointment(body);
+    const appointment = await createAppointment(body, identity.actorType, identity.actorId);
     reply.code(201).send(appointment);
   });
 
-  app.get("/appointments", async (request) => {
+  app.get("/appointments", readGuard, async (request) => {
     const query = listAppointmentsQuerySchema.parse(request.query);
-    const staff = request.authStaff!;
-    const barberId = staff.role === "BARBER" ? staff.barberId : query.barberId;
+    const identity = resolveActingIdentity(request);
+    const barberId = identity.unrestricted ? query.barberId : identity.barberId;
 
     const appointments = await prisma.appointment.findMany({
       where: {
@@ -76,55 +80,61 @@ export async function appointmentsRoutes(app: FastifyInstance) {
     return { appointments };
   });
 
-  app.get<{ Params: { id: string } }>("/appointments/:id", async (request) => {
-    await assertOwnsAppointment(request.authStaff!, request.params.id);
+  app.get<{ Params: { id: string } }>("/appointments/:id", readGuard, async (request) => {
+    await assertOwnsAppointment(resolveActingIdentity(request), request.params.id);
     return getAppointment(request.params.id);
   });
 
-  app.get<{ Params: { id: string } }>("/appointments/:id/history", async (request) => {
-    await assertOwnsAppointment(request.authStaff!, request.params.id);
+  app.get<{ Params: { id: string } }>("/appointments/:id/history", readGuard, async (request) => {
+    await assertOwnsAppointment(resolveActingIdentity(request), request.params.id);
     return { history: await getAppointmentHistory(request.params.id) };
   });
 
-  app.post<{ Params: { id: string } }>("/appointments/:id/confirm", async (request) => {
-    await assertOwnsAppointment(request.authStaff!, request.params.id);
-    const body = confirmSchema.parse(request.body ?? {});
-    return confirmAppointment(request.params.id, body.actorType, body.actorId);
+  app.post<{ Params: { id: string } }>("/appointments/:id/confirm", writeGuard, async (request) => {
+    const identity = resolveActingIdentity(request);
+    await assertOwnsAppointment(identity, request.params.id);
+    confirmSchema.parse(request.body ?? {});
+    return confirmAppointment(request.params.id, identity.actorType, identity.actorId);
   });
 
-  app.post<{ Params: { id: string } }>("/appointments/:id/check-in", async (request) => {
-    await assertOwnsAppointment(request.authStaff!, request.params.id);
-    const body = checkInSchema.parse(request.body ?? {});
-    return checkInAppointment(request.params.id, body.actorType, body.actorId);
+  app.post<{ Params: { id: string } }>("/appointments/:id/check-in", writeGuard, async (request) => {
+    const identity = resolveActingIdentity(request);
+    await assertOwnsAppointment(identity, request.params.id);
+    checkInSchema.parse(request.body ?? {});
+    return checkInAppointment(request.params.id, identity.actorType, identity.actorId);
   });
 
-  app.post<{ Params: { id: string } }>("/appointments/:id/complete", async (request) => {
-    await assertOwnsAppointment(request.authStaff!, request.params.id);
+  app.post<{ Params: { id: string } }>("/appointments/:id/complete", writeGuard, async (request) => {
+    const identity = resolveActingIdentity(request);
+    await assertOwnsAppointment(identity, request.params.id);
     const body = completeSchema.parse(request.body);
-    return completeAppointment(request.params.id, body.actorType, body.actorId, body.internalNotes, body.payment);
+    return completeAppointment(request.params.id, identity.actorType, identity.actorId, body.internalNotes, body.payment);
   });
 
-  app.post<{ Params: { id: string } }>("/appointments/:id/cancel", async (request) => {
-    await assertOwnsAppointment(request.authStaff!, request.params.id);
+  app.post<{ Params: { id: string } }>("/appointments/:id/cancel", writeGuard, async (request) => {
+    const identity = resolveActingIdentity(request);
+    await assertOwnsAppointment(identity, request.params.id);
     const body = cancelSchema.parse(request.body ?? {});
-    return cancelAppointment(request.params.id, body.actorType, body.actorId, body.reason);
+    return cancelAppointment(request.params.id, identity.actorType, identity.actorId, body.reason);
   });
 
-  app.post<{ Params: { id: string } }>("/appointments/:id/no-show", async (request) => {
-    await assertOwnsAppointment(request.authStaff!, request.params.id);
+  app.post<{ Params: { id: string } }>("/appointments/:id/no-show", writeGuard, async (request) => {
+    const identity = resolveActingIdentity(request);
+    await assertOwnsAppointment(identity, request.params.id);
     const body = noShowSchema.parse(request.body ?? {});
-    return markNoShow(request.params.id, body.actorType, body.actorId, body.reason);
+    return markNoShow(request.params.id, identity.actorType, identity.actorId, body.reason);
   });
 
-  app.post<{ Params: { id: string } }>("/appointments/:id/reschedule", async (request) => {
-    const staff = request.authStaff!;
-    await assertOwnsAppointment(staff, request.params.id);
+  app.post<{ Params: { id: string } }>("/appointments/:id/reschedule", writeGuard, async (request) => {
+    const identity = resolveActingIdentity(request);
+    await assertOwnsAppointment(identity, request.params.id);
     const body = rescheduleSchema.parse(request.body);
     // remarcar move HORÁRIO; reatribuir para OUTRO barbeiro é decisão de
-    // escala, não algo que o próprio barbeiro decide sozinho sobre a agenda de um colega.
-    if (staff.role === "BARBER" && body.barberId && body.barberId !== staff.barberId) {
+    // escala — nem um BARBER decide isso sozinho sobre a agenda de um
+    // colega, mas ADMIN e API key (tratada como sistema) podem.
+    if (!identity.unrestricted && body.barberId && body.barberId !== identity.barberId) {
       throw new Problem(403, "FORBIDDEN", "Só um administrador pode reatribuir o agendamento a outro barbeiro.");
     }
-    return rescheduleAppointment(request.params.id, body);
+    return rescheduleAppointment(request.params.id, identity.actorType, identity.actorId, body);
   });
 }

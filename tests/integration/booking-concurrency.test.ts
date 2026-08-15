@@ -111,7 +111,7 @@ describe("reserva de agendamento — anti double-booking", () => {
       method: "POST",
       url: `/appointments/${appointment.id}/cancel`,
       headers: { authorization: `Bearer ${accessToken}` },
-      payload: { actorType: "ADMIN" },
+      payload: {},
     });
     expect(cancelRes.statusCode).toBe(200);
 
