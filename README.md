@@ -377,6 +377,50 @@ o workflow existe mas não rodou de verdade em nenhum push ainda — validei a s
 inteira (`migrate deploy` → `typecheck` → `build` → `test`) rodando localmente contra um
 banco recém-criado do zero, simulando um runner limpo.
 
+## Docker
+
+A API tem um `Dockerfile` multi-stage (`build` compila e poda pra produção, `runtime` só
+carrega o resultado — sem pnpm, sem devDependencies, sem código-fonte TypeScript na
+imagem final):
+
+```bash
+docker build -t projeto-prisma-api .
+```
+
+Ou suba API + Postgres juntos via compose, atrás de um profile pra não interferir no
+fluxo padrão de dev (`pnpm db:up` continua só o Postgres; a API local roda via `pnpm dev`
+com hot-reload — o profile é pra testar a imagem publicada de ponta a ponta):
+
+```bash
+docker compose --profile full up -d --build
+```
+
+A imagem **não roda `prisma migrate deploy` no `CMD`** — aplicar migração é um passo
+deliberadamente separado (`npx prisma migrate deploy` antes de subir uma nova versão),
+pra evitar múltiplas réplicas correndo a migração em corrida entre si. `DATABASE_URL` e
+`JWT_SECRET` continuam vindo do ambiente do container, nunca de um `.env` embutido na
+imagem — mesmo `.dockerignore` que ignora `dist`/`node_modules`/`tests` também ignora
+`.env*`.
+
+Duas pegadinhas do Alpine + Prisma que valeram registro caso a imagem volte a quebrar:
+
+- **pnpm 11 exige Node ≥ 22.13** (`packageManager` no `package.json`) — por isso a base é
+  `node:22-alpine`, não `node:20-alpine`. Com Node 20, `corepack` baixa o pnpm certo mas
+  ele falha ao subir (`ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite`). O CI (`ci.yml`) usa o
+  mesmo Node 22 pelo mesmo motivo.
+- **Prisma não detecta a versão do OpenSSL dentro da imagem** (Alpine não traz o binário
+  `openssl` por padrão) e cai no engine errado (`openssl-1.1.x`, que nem existe no Alpine
+  3.24 — só `libssl.so.3`). Resolvido com `binaryTargets = ["native",
+  "linux-musl-openssl-3.0.x"]` no `generator client` do `schema.prisma` (pra gerar o
+  engine certo) **e** `apk add openssl` na imagem runtime (pra detecção em tempo de
+  execução escolher esse engine em vez do genérico).
+
+Validado de ponta a ponta: build limpo, container standalone contra o Postgres do
+compose (`/health` e `/health/db` respondendo, `HEALTHCHECK` do próprio Docker reportando
+`healthy`), execução como usuário não-root (`app`), e desligamento gracioso via
+`dumb-init` + `SIGTERM` (processo encerra sozinho em ~1.6s, sem precisar de `SIGKILL` —
+é o `close-with-grace` de `src/server.ts` funcionando dentro do container).
+
 ## O que ainda não existe
 
 Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, mas separa
@@ -392,7 +436,5 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
   equipe.
 - **Sem expiração de pontos de fidelidade** nem limpeza de refresh tokens expirados na
   tabela (acumulam, não afeta segurança).
-- **Sem `Dockerfile` da própria API** — só o Postgres está containerizado; rodar a API
-  hoje é sempre via `pnpm dev`/`pnpm start` direto no host.
 - **Recuperação de senha de equipe** é só reset manual por outro admin — sem fluxo de
   "esqueci minha senha" por e-mail.

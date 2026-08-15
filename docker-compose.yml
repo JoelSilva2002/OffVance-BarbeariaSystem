@@ -17,5 +17,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Opcional — atrás de um profile pra não mudar o fluxo padrão de dev
+  # (`pnpm db:up` continua subindo só o Postgres; a API roda local com
+  # hot-reload via `pnpm dev`). Suba com `docker compose --profile full up`
+  # pra testar a imagem publicada de ponta a ponta.
+  api:
+    build: .
+    container_name: prisma-api
+    restart: unless-stopped
+    profiles: ["full"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://prisma:prisma@postgres:5432/projeto_prisma?schema=public
+      JWT_SECRET: ${JWT_SECRET:-troque-por-um-segredo-forte-em-producao}
+      NODE_ENV: production
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+    ports:
+      - "3000:3000"
+
 volumes:
   prisma_postgres_data:

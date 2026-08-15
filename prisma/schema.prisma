@@ -3,7 +3,12 @@
 // Ver docs/ARQUITETURA.md para o desenho completo (todas as fases).
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // node:22-alpine já traz libssl.so.3 (Alpine 3.24), mas o Prisma não
+  // consegue detectar a versão do OpenSSL dentro da imagem (sem o binário
+  // `openssl`) e cairia no engine errado (openssl-1.1.x) por padrão —
+  // declarar o target explicitamente evita esse mismatch em runtime.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
