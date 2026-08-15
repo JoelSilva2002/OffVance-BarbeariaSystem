@@ -1,10 +1,10 @@
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
 import { hashPassword, verifyPassword } from "../../lib/password.js";
-import { generateRefreshToken, hashRefreshToken } from "../../lib/tokens.js";
+import { revokeRefreshToken, rotateRefreshToken as rotateToken } from "../../lib/refresh-tokens.js";
 import type { CreateAdminInput, UpdateAdminInput } from "./staff-auth.schema.js";
 
-const REFRESH_TOKEN_TTL_DAYS = 30;
+export { issueRefreshToken, revokeRefreshToken } from "../../lib/refresh-tokens.js";
 
 interface StaffSession {
   userId: string;
@@ -68,81 +68,22 @@ export async function staffLogin(email: string, password: string) {
   return { userId: user.id, role: user.role as "ADMIN" | "BARBER", barberId: user.barber?.id };
 }
 
-/** Emite e persiste (hash) um novo refresh token — chamado no login e a cada rotação. */
-export async function issueRefreshToken(userId: string): Promise<string> {
-  const raw = generateRefreshToken();
-  await prisma.refreshToken.create({
-    data: {
-      userId,
-      tokenHash: hashRefreshToken(raw),
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 3_600_000),
-    },
-  });
-  return raw;
-}
-
 /**
- * Rotação (docs de segurança padrão para refresh token): cada uso troca o
- * token por um novo e revoga o anterior. Reapresentar um token já revogado
- * é sinal de roubo — a resposta é revogar TODAS as sessões ativas do
- * usuário, não só recusar aquele uso.
+ * Rotaciona via o ciclo de vida compartilhado (src/lib/refresh-tokens.ts) e
+ * então checa se o usuário ainda é elegível para sessão de equipe — se não
+ * for (desativado, virou outro papel), revoga o token recém-emitido antes
+ * de recusar, para não deixar um refresh token válido órfão no banco.
  */
-export async function rotateRefreshToken(rawToken: string): Promise<StaffSession & { refreshToken: string }> {
-  const tokenHash = hashRefreshToken(rawToken);
-  const existing = await prisma.refreshToken.findUnique({ where: { tokenHash } });
+export async function rotateStaffSession(rawToken: string): Promise<StaffSession & { refreshToken: string }> {
+  const { userId, refreshToken } = await rotateToken(rawToken);
 
-  if (!existing) {
-    throw new Problem(401, "INVALID_REFRESH_TOKEN", "Sessão inválida. Faça login novamente.");
-  }
-
-  if (existing.revokedAt) {
-    await prisma.refreshToken.updateMany({
-      where: { userId: existing.userId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-    throw new Problem(
-      401,
-      "REFRESH_TOKEN_REUSED",
-      "Sessão comprometida — todos os dispositivos foram desconectados. Faça login novamente.",
-    );
-  }
-
-  if (existing.expiresAt < new Date()) {
-    throw new Problem(401, "REFRESH_TOKEN_EXPIRED", "Sessão expirada. Faça login novamente.");
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: existing.userId }, include: { barber: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, include: { barber: true } });
   if (!user || user.status !== "ACTIVE" || (user.role !== "ADMIN" && user.role !== "BARBER")) {
+    await revokeRefreshToken(refreshToken);
     throw new Problem(401, "INVALID_REFRESH_TOKEN", "Sessão inválida. Faça login novamente.");
   }
 
-  const newRaw = generateRefreshToken();
-  const [newToken] = await prisma.$transaction([
-    prisma.refreshToken.create({
-      data: {
-        userId: existing.userId,
-        tokenHash: hashRefreshToken(newRaw),
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 3_600_000),
-      },
-    }),
-    prisma.refreshToken.update({ where: { id: existing.id }, data: { revokedAt: new Date() } }),
-  ]);
-  await prisma.refreshToken.update({ where: { id: existing.id }, data: { replacedById: newToken.id } });
-
-  return {
-    userId: user.id,
-    role: user.role as "ADMIN" | "BARBER",
-    barberId: user.barber?.id,
-    refreshToken: newRaw,
-  };
-}
-
-/** Encerra só esta sessão/dispositivo — os demais refresh tokens do usuário continuam válidos. */
-export async function revokeRefreshToken(rawToken: string): Promise<void> {
-  await prisma.refreshToken.updateMany({
-    where: { tokenHash: hashRefreshToken(rawToken), revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
+  return { userId: user.id, role: user.role as "ADMIN" | "BARBER", barberId: user.barber?.id, refreshToken };
 }
 
 /** true enquanto não existir nenhum ADMIN — só nesse momento POST /admins fica aberto. */

@@ -13,7 +13,7 @@ import {
   issueRefreshToken,
   listAdmins,
   revokeRefreshToken,
-  rotateRefreshToken,
+  rotateStaffSession,
   staffLogin,
   updateAdmin,
 } from "./staff-auth.service.js";
@@ -57,7 +57,7 @@ export async function staffAuthRoutes(app: FastifyInstance) {
 
   app.post("/auth/staff/refresh", async (request, reply) => {
     const body = refreshTokenSchema.parse(request.body);
-    const { userId, role, barberId, refreshToken } = await rotateRefreshToken(body.refreshToken);
+    const { userId, role, barberId, refreshToken } = await rotateStaffSession(body.refreshToken);
     const accessToken = await reply.jwtSign({ sub: userId, role, barberId }, { expiresIn: ACCESS_TOKEN_TTL });
     reply.send({ accessToken, refreshToken, role, barberId });
   });

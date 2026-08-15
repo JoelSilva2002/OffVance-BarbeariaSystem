@@ -114,15 +114,24 @@ Prisma) → `*.routes.ts` (Fastify, só validação + guard de auth + chamada ao
 Duas sessões completamente separadas — um token de uma nunca abre rota da outra (`403`
 se tentar):
 
-**Cliente (portal):** `POST /auth/otp/request` → recebe um código de 6 dígitos por
-WhatsApp (em dev, a resposta inclui `devCode` fora de produção) → `POST
-/auth/otp/verify` → JWT de 30 dias. Rotas `/me/*`.
+Ambas seguem o mesmo desenho de sessão (access token curto + refresh token opaco de 30
+dias, guardado só como hash em `refresh_tokens` — nunca em texto puro), implementado uma
+vez em `src/lib/refresh-tokens.ts` e reaproveitado pelas duas.
 
-**Equipe (`ADMIN`/`BARBER`):** `POST /auth/staff/login` (e-mail+senha) → access token de
-30min + refresh token opaco de 30 dias. `POST /auth/staff/refresh` rotaciona o par a cada
-uso — reapresentar um refresh token já usado é tratado como sessão comprometida e derruba
-**todos** os dispositivos daquele usuário. `POST /auth/staff/logout` encerra só a sessão
-atual.
+**Cliente (portal):** `POST /auth/otp/request` → recebe um código de 6 dígitos por
+WhatsApp (em dev, a resposta inclui `devCode` fora de produção) → `POST /auth/otp/verify`
+→ access token de 30min + refresh token. `POST /auth/otp/refresh` rotaciona o par;
+`POST /auth/otp/logout` encerra a sessão atual. Rotas `/me/*`.
+
+**Equipe (`ADMIN`/`BARBER`):** `POST /auth/staff/login` (e-mail+senha) → mesmo par de
+tokens. `POST /auth/staff/refresh` e `POST /auth/staff/logout` — mesma mecânica.
+
+Em ambos: cada uso de `refresh` troca o token por um novo e revoga o anterior
+(rotação) — reapresentar um refresh token já usado (rotacionado ou de logout) é tratado
+como sessão comprometida e derruba **todos** os dispositivos daquele usuário. Um refresh
+token de cliente não vira sessão de equipe (nem vice-versa): a tentativa é recusada e
+**também invalida o token usado na tentativa** — quem faz esse teste sem querer precisa
+logar de novo.
 
 Dois níveis de guarda em `src/plugins/auth.ts`:
 
@@ -266,8 +275,6 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
 
 - **Testes automatizados:** tudo foi validado manualmente contra Postgres real durante o
   desenvolvimento; não há suíte que rode sozinha nem CI (`.github/workflows` não existe).
-- **Refresh token só para equipe** — o portal do cliente usa uma sessão única de 30 dias,
-  sem rotação.
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
 - **API key para máquinas:** o n8n hoje usa um token de equipe para ler `/events`, não o
