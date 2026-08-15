@@ -268,28 +268,29 @@ própria agenda) · 🔒 só `ADMIN` · 🤖 aceita também API key com o escopo
 | | Rota | Descrição |
 |---|---|---|
 | 🌐 | `GET /barbers` · `GET /barbers/:id` · `GET /barbers/:id/reviews` | vitrine |
-| 🔒 | `POST` · `PATCH` · `DELETE /barbers/:id` · `PUT .../services` | cadastro e habilitação |
-| 👤 | `GET`/`PUT /barbers/:id/schedule` · `POST .../time-off` · `GET .../agenda` | grade e agenda (escopado) |
+| 🔒 | `POST` · `PATCH` · `DELETE /barbers/:id` · `PUT .../services` | cadastro e habilitação — sem alternativa de API key, de propósito |
+| 👤🤖 | `GET`/`PUT /barbers/:id/schedule` · `POST .../time-off` · `GET .../agenda` | grade e agenda (escopado; `barbers:read`/`barbers:write`) |
 | 🌐 | `GET /service-categories` · `GET /services` · `GET /services/:id` · `.../barbers` | vitrine |
-| 🔒 | `POST`/`PATCH` em ambos acima | catálogo e preço |
+| 🔒🤖 | `POST`/`PATCH` em ambos acima | catálogo e preço (`catalog:write`) |
 
 ### Financeiro, pacotes e fidelidade
 
 | | Rota | Descrição |
 |---|---|---|
 | 🌐 | `GET /packages` · `GET /packages/:id` | catálogo de pacotes |
-| 🔒 | `POST`/`PATCH /packages` | definir pacote |
-| 👤 | `POST`/`GET /clients/:id/packages` | vender/consultar pacote de um cliente |
-| 👤 | `GET /clients/:id/loyalty` | saldo de pontos de um cliente |
+| 🔒🤖 | `POST`/`PATCH /packages` | definir pacote (`catalog:write`) |
+| 👤🤖 | `POST`/`GET /clients/:id/packages` | vender/consultar pacote de um cliente (`financeiro:write`/`financeiro:read`) |
+| 👤🤖 | `GET /clients/:id/loyalty` | saldo de pontos de um cliente (`financeiro:read`) |
 | 🔒 | `GET /payments` | listagem financeira |
+| 👤 | `GET /shop-settings` · 🔒 `PATCH` | número mágico do agendamento/fidelidade, incl. `loyaltyPointsExpirationDays` |
 
 ### Loja e avaliações
 
 | | Rota | Descrição |
 |---|---|---|
 | 🌐 | `GET /products` · `GET /products/:id` | vitrine (nunca expõe custo) |
-| 🔒 | `POST`/`PATCH /products` · imagens · movimentações de estoque | gestão de inventário |
-| 👤 | `POST`/`GET /orders` · `GET /orders/:id` | venda no balcão |
+| 🔒🤖 | `POST`/`PATCH /products` · imagens · movimentações de estoque | gestão de inventário (`catalog:write`) |
+| 👤🤖 | `POST`/`GET /orders` · `GET /orders/:id` | venda no balcão (`financeiro:write`/`financeiro:read`) |
 | 🌐 | `GET /barbers/:id/reviews` | nota pública do barbeiro |
 | 👤 | `GET /reviews` | listagem administrativa |
 
@@ -302,7 +303,7 @@ própria agenda) · 🔒 só `ADMIN` · 🤖 aceita também API key com o escopo
 | 👤🤖 | `GET /events` | fallback de pull do outbox — staff **ou** API key `events:read` |
 | 👤 | `GET /notifications` | fila de lembretes/confirmações agendadas |
 | 👤🤖 | `PATCH /notifications/:id` | callback de entrega — staff **ou** API key `notifications:write` |
-| 🔒 | `GET /reports/appointments` · `GET /reports/revenue` | dashboards |
+| 🔒🤖 | `GET /reports/appointments` · `GET /reports/revenue` | dashboards (`financeiro:read`) |
 | 🌐 | `GET /health` · `GET /health/db` | liveness/readiness |
 
 ## Integração com n8n
@@ -419,6 +420,34 @@ o workflow existe mas não rodou de verdade em nenhum push ainda — validei a s
 inteira (`migrate deploy` → `typecheck` → `build` → `test`) rodando localmente contra um
 banco recém-criado do zero, simulando um runner limpo.
 
+## Manutenção em background
+
+`server.ts` sobe dois loops via `setInterval`, sem depender de cron externo ou fila —
+cada um só entra em ação a próxima vez que o servidor de fato estiver de pé:
+
+- **A cada 5s** (`fireDueNotifications`, `fanOutPendingEvents`, `deliverPendingWebhooks`,
+  `sweepAutoConfirm`) — entrega de notificação/webhook e auto-confirmação, onde atraso de
+  segundos importa.
+- **A cada 1h** (`expireLoyaltyPoints`, `cleanupExpiredRefreshTokens`) — manutenção de
+  baixo volume, sem motivo pra rodar na cadência dos 5s.
+
+**Expiração de pontos de fidelidade:** `loyaltyPointsExpirationDays` em `shop_settings`
+(`null` por padrão = nunca expira; `PATCH /shop-settings` como `ADMIN` muda isso). O
+prazo é carimbado no próprio lançamento de `EARN` no momento em que o ponto é ganho —
+mudar a configuração depois nunca reescreve o vencimento de pontos já concedidos.
+`expireLoyaltyPoints()` reconstrói em memória, por cliente, quanto sobrou de cada lote
+ganho (um resgate consome o lote mais antigo primeiro, FIFO) e baixa só o que não foi
+consumido de um lote vencido, gravando um lançamento `EXPIRE` que aponta pro `EARN`
+original — nunca reescreve histórico. Idempotente: rodar de novo não duplica baixa,
+porque o `EXPIRE` já criado zera aquele lote específico na reconstrução seguinte.
+
+**Limpeza de refresh tokens:** `cleanupExpiredRefreshTokens()` apaga só linhas com
+`expiresAt` já vencido — revogado ou não. Uma linha revogada mas **ainda dentro da
+validade original** não é tocada: é o que sustenta a detecção de reuso (replay de um
+token já trocado por um novo vira `REFRESH_TOKEN_REUSED` e derruba todas as sessões —
+ver `src/lib/refresh-tokens.ts`); apagar cedo demais destruiria essa checagem sem
+necessidade.
+
 ## Docker
 
 A API tem um `Dockerfile` multi-stage (`build` compila e poda pra produção, `runtime` só
@@ -470,5 +499,3 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
 
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
-- **Sem expiração de pontos de fidelidade** nem limpeza de refresh tokens expirados na
-  tabela (acumulam, não afeta segurança).

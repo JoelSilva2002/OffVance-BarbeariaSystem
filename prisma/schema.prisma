@@ -164,6 +164,10 @@ model ShopSettings {
   autoConfirmHoursBefore    Int      @default(24) @map("auto_confirm_hours_before")
   loyaltyPointsPerCurrency  Decimal  @default(1.00) @map("loyalty_points_per_currency") @db.Decimal(6, 2)
   loyaltyPointValueCents    Int      @default(5) @map("loyalty_point_value_cents")
+  // null = pontos nunca expiram (default — trocar de política não pode ser
+  // um efeito colateral silencioso de rodar uma migração). Ver EXPIRE em
+  // LoyaltyReason e expireLoyaltyPoints() em loyalty.service.ts.
+  loyaltyPointsExpirationDays Int?   @map("loyalty_points_expiration_days")
   createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -626,6 +630,10 @@ enum LoyaltyReason {
   EARN
   REDEEM
   ADJUST
+  // Baixa gerada por expireLoyaltyPoints() — nunca por uma rota. refId
+  // aponta pro id do LoyaltyEntry (EARN) que está sendo baixado, não pro
+  // agendamento/pedido original.
+  EXPIRE
 }
 
 // Saldo = SUM(deltaPoints) — mesmo motivo do ledger de pacotes: um campo de

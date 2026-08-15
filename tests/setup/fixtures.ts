@@ -13,7 +13,9 @@ function unique(): string {
   return String(counter).padStart(6, "0");
 }
 
-export async function seedShopSettings(overrides: Partial<{ minLeadTimeMin: number; cancelDeadlineHours: number }> = {}) {
+export async function seedShopSettings(
+  overrides: Partial<{ minLeadTimeMin: number; cancelDeadlineHours: number; loyaltyPointsExpirationDays: number | null }> = {},
+) {
   return prisma.shopSettings.upsert({
     where: { shopId: "default" },
     update: overrides,
@@ -26,6 +28,7 @@ export async function seedShopSettings(overrides: Partial<{ minLeadTimeMin: numb
       cancelDeadlineHours: overrides.cancelDeadlineHours ?? 2,
       rescheduleDeadlineHours: 2,
       autoConfirmHoursBefore: 24,
+      loyaltyPointsExpirationDays: overrides.loyaltyPointsExpirationDays,
     },
   });
 }

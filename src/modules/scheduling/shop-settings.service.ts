@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+import type { UpdateShopSettingsInput } from "./shop-settings.schema.js";
 
 const SHOP_ID = "default";
 
@@ -25,5 +26,20 @@ export async function getShopSettings(db: Client = prisma) {
     autoConfirmHoursBefore: 24,
     loyaltyPointsPerCurrency: 1,
     loyaltyPointValueCents: 5,
+    loyaltyPointsExpirationDays: null as number | null,
   };
+}
+
+/**
+ * Upsert em vez de update puro: se ainda não existir linha (sistema
+ * recém-criado, antes do primeiro seed), o primeiro PATCH já cria uma —
+ * sem isso, um ADMIN mudando configuração num sistema novo esbarraria num
+ * 404 sem sentido.
+ */
+export async function updateShopSettings(input: UpdateShopSettingsInput) {
+  return prisma.shopSettings.upsert({
+    where: { shopId: SHOP_ID },
+    update: input,
+    create: { shopId: SHOP_ID, ...input },
+  });
 }

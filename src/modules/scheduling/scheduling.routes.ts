@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { DateTime } from "luxon";
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
-import { getShopSettings } from "./shop-settings.service.js";
+import { requireAdminAuth, requireStaffAuth } from "../../plugins/auth.js";
+import { getShopSettings, updateShopSettings } from "./shop-settings.service.js";
 import {
   computeFreeIntervals,
   generateSlotsForDay,
@@ -10,6 +11,7 @@ import {
   resolveServiceSelection,
 } from "./availability.service.js";
 import { barbersQuerySchema, daysQuerySchema, slotsQuerySchema } from "./scheduling.schema.js";
+import { updateShopSettingsSchema } from "./shop-settings.schema.js";
 
 const MAX_RANGE_DAYS = 31;
 
@@ -31,6 +33,15 @@ function datesInMonth(monthISO: string): string[] {
 }
 
 export async function schedulingRoutes(app: FastifyInstance) {
+  // Todo número mágico do agendamento/fidelidade mora aqui — consulta é
+  // operacional (qualquer staff), mudar é decisão de dono (ADMIN).
+  app.get("/shop-settings", { preHandler: requireStaffAuth }, async () => getShopSettings());
+
+  app.patch("/shop-settings", { preHandler: requireAdminAuth }, async (request) => {
+    const body = updateShopSettingsSchema.parse(request.body);
+    return updateShopSettings(body);
+  });
+
   app.get("/availability/slots", async (request) => {
     const query = slotsQuerySchema.parse(request.query);
     const dates = datesBetween(query.from, query.to);

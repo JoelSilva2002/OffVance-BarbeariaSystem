@@ -78,3 +78,17 @@ export async function revokeRefreshToken(rawToken: string): Promise<void> {
     data: { revokedAt: new Date() },
   });
 }
+
+/**
+ * Job de manutenção (chamado pelo loop de background em server.ts): apaga
+ * linhas cujo `expiresAt` já passou — revogadas ou não. Uma linha só some
+ * depois de vencida por conta própria, nunca antes: `rotateRefreshToken`
+ * usa `revokedAt` pra detectar reuso (replay de um token já trocado por um
+ * novo) — apagar uma linha revogada mas ainda dentro da validade original
+ * derrubaria essa detecção sem necessidade nenhuma, já que ela só existe
+ * pra travar contas por até `REFRESH_TOKEN_TTL_DAYS`.
+ */
+export async function cleanupExpiredRefreshTokens(now: Date = new Date()): Promise<number> {
+  const { count } = await prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: now } } });
+  return count;
+}
