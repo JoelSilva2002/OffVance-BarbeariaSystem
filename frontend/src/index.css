@@ -1,0 +1,123 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Fraunces (títulos/wordmark/números de relatório), Instrument Sans
+   (corpo) e IBM Plex Mono (código/valores em tabela) são carregadas via
+   <link> em index.html, não @import aqui — um @import de fonte depois de
+   `@import "tailwindcss"` é descartado pelo navegador (import precisa vir
+   antes de qualquer outra regra, e o Tailwind se expande em várias). */
+
+:root {
+  color-scheme: dark;
+  --radius: 0.5rem;
+
+  /* Fundo/superfície — marrom-preto quente, nunca preto puro. Painel de
+     barbearia: madeira escura e couro, não "dashboard SaaS #4". */
+  --background: #16130f;
+  --foreground: #f2ede4;
+
+  --card: #1e1a15;
+  --card-foreground: #f2ede4;
+
+  --popover: #26211a;
+  --popover-foreground: #f2ede4;
+
+  /* Latão envelhecido — guarnição de navalha, poste de barbearia, moldura
+     de espelho. O único acento do sistema. */
+  --primary: #c9a961;
+  --primary-foreground: #16130f;
+
+  --secondary: #26211a;
+  --secondary-foreground: #f2ede4;
+
+  --muted: #1e1a15;
+  --muted-foreground: #a89b87;
+
+  --accent: #26211a;
+  --accent-foreground: #f2ede4;
+
+  /* Único vermelho do sistema — reservado pro único status que é de fato
+     um problema operacional (não-comparecimento). Cancelado usa um tom
+     neutro: é um desfecho normal, não um alarme. */
+  --destructive: #b25a45;
+  --destructive-foreground: #f2ede4;
+
+  --border: #3a332a;
+  --input: #3a332a;
+  --ring: #c9a961;
+
+  /* Rampa semântica dos 6 status de agendamento — sempre dessaturada,
+     nunca neon em fundo escuro. */
+  --status-scheduled: #7c8b99;
+  --status-confirmed: #6fa8a0;
+  --status-active: #c9a961;
+  --status-done: #7fa66b;
+  --status-cancelled: #8c7a6b;
+  --status-noshow: #b25a45;
+
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-scheduled: var(--status-scheduled);
+  --color-status-confirmed: var(--status-confirmed);
+  --color-status-active: var(--status-active);
+  --color-status-done: var(--status-done);
+  --color-status-cancelled: var(--status-cancelled);
+  --color-status-noshow: var(--status-noshow);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    /* números tabulares — tabelas de agenda/financeiro não podem "dançar" */
+    font-feature-settings: "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  /* Assinatura do painel — talão de senha de barbearia: um entalhe
+     triangular recortado na borda esquerda, geométrico (não uma cor
+     imitando o fundo), pra funcionar em qualquer superfície. */
+  .ticket-stub {
+    border-radius: 2px;
+    clip-path: polygon(10px 0%, 100% 0%, 100% 100%, 10px 100%, 10px 62%, 2px 50%, 10px 38%);
+  }
+}
