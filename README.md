@@ -148,10 +148,34 @@ nenhum `ADMIN` no banco. Depois disso, passa a exigir um `ADMIN` autenticado.
 IP (`@fastify/rate-limit`) + bloqueio de conta por 15min após 5 senhas erradas seguidas
 (mesmo a senha certa é recusada enquanto bloqueada).
 
+### API key para máquinas (n8n e outros consumidores server-to-server)
+
+Terceira via de autenticação, separada de cliente e equipe — pensada pra quem não é um
+humano logando (`docs/ARQUITETURA.md` §02). `POST /api-keys` (`ADMIN`) gera uma chave
+`sk_...` com um ou mais escopos; **a chave completa só aparece nessa resposta, uma vez**
+— o banco guarda só o hash (`src/lib/tokens.ts`), igual à senha de equipe e ao refresh
+token. Listagens mostram só `keyPrefix` (os 8 primeiros caracteres) para identificar
+qual chave é qual.
+
+Escopos hoje (`src/modules/apikeys/scopes.ts`): `events:read` (`GET /events`, o fallback
+de pull do outbox) e `notifications:write` (`PATCH /notifications/:id`, callback
+reportando o resultado real de uma entrega). Essas duas rotas aceitam **ou** uma sessão
+de equipe **ou** uma API key com o escopo certo — `requireStaffOrApiKey` em
+`src/plugins/auth.ts` decide qual caminho seguir pelo prefixo do token, sem misturar os
+dois. Chave sem o escopo necessário vira `403 INSUFFICIENT_SCOPE` (a chave é válida, só
+não pode fazer aquilo) — diferente de `401`, que é chave ausente/inválida/revogada.
+
+```bash
+curl -X POST http://localhost:3000/api-keys \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"n8n produção","scopes":["events:read","notifications:write"]}'
+# {"id":"...","keyPrefix":"sk_a1b2c3d4","key":"sk_a1b2c3d4...(guarde agora — não aparece de novo)"}
+```
+
 ## Referência de endpoints
 
 Legenda: 🌐 público · 🔑 cliente (OTP) · 👤 equipe (`ADMIN`/`BARBER`, `BARBER` escopado à
-própria agenda) · 🔒 só `ADMIN`
+própria agenda) · 🔒 só `ADMIN` · 🤖 aceita também API key com o escopo indicado
 
 ### Agenda e disponibilidade
 
@@ -215,8 +239,10 @@ própria agenda) · 🔒 só `ADMIN`
 | | Rota | Descrição |
 |---|---|---|
 | 🔒 | `GET`/`POST`/`PATCH`/`DELETE /webhook-endpoints` | assinaturas de eventos para o n8n |
-| 👤 | `GET /events` | fallback de pull do outbox (n8n atrás de NAT) |
-| 👤 | `GET`/`PATCH /notifications` | fila de lembretes/confirmações agendadas |
+| 🔒 | `GET`/`POST`/`PATCH`/`DELETE /api-keys` | emissão de chaves de máquina |
+| 👤🤖 | `GET /events` | fallback de pull do outbox — staff **ou** API key `events:read` |
+| 👤 | `GET /notifications` | fila de lembretes/confirmações agendadas |
+| 👤🤖 | `PATCH /notifications/:id` | callback de entrega — staff **ou** API key `notifications:write` |
 | 🔒 | `GET /reports/appointments` · `GET /reports/revenue` | dashboards |
 | 🌐 | `GET /health` · `GET /health/db` | liveness/readiness |
 
@@ -277,8 +303,9 @@ Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, ma
   desenvolvimento; não há suíte que rode sozinha nem CI (`.github/workflows` não existe).
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
-- **API key para máquinas:** o n8n hoje usa um token de equipe para ler `/events`, não o
-  esquema de API key com escopos descrito no documento de arquitetura.
+- **Escopo de API key ainda pequeno:** só cobre as duas rotas que o n8n usa hoje
+  (`events:read`, `notifications:write`) — não dá pra emitir uma chave que, por exemplo,
+  crie agendamentos em nome do sistema.
 - **E-mail como canal de notificação:** só WhatsApp está de fato ligado ao outbox.
 - **Sem expiração de pontos de fidelidade** nem limpeza de refresh tokens expirados na
   tabela (acumulam, não afeta segurança).

@@ -24,6 +24,7 @@ import { productsRoutes } from "./modules/products/products.routes.js";
 import { ordersRoutes } from "./modules/orders/orders.routes.js";
 import { reviewsRoutes } from "./modules/reviews/reviews.routes.js";
 import { reportsRoutes } from "./modules/reports/reports.routes.js";
+import { apiKeysRoutes } from "./modules/apikeys/api-keys.routes.js";
 
 export function buildApp() {
   const app = Fastify({
@@ -59,6 +60,7 @@ export function buildApp() {
   app.register(ordersRoutes);
   app.register(reviewsRoutes);
   app.register(reportsRoutes);
+  app.register(apiKeysRoutes);
 
   return app;
 }

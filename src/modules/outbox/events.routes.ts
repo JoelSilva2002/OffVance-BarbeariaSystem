@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
-import { requireStaffAuth } from "../../plugins/auth.js";
+import { requireStaffOrApiKey } from "../../plugins/auth.js";
 
 const listEventsQuerySchema = z.object({
   since: z.string().optional(),
@@ -15,12 +15,11 @@ const listEventsQuerySchema = z.object({
 /**
  * Fallback de "pull" (docs/ARQUITETURA.md §02): quando o n8n está atrás de
  * NAT ou o push falhou, ele lê o outbox diretamente por aqui em vez de
- * esperar um POST chegar.
+ * esperar um POST chegar. Aceita sessão de equipe OU API key com escopo
+ * events:read — é a rota pensada pra máquina, não só um GET de staff.
  */
-// TODO: quando existir API key para máquinas (n8n), trocar por isso — hoje
-// o n8n precisa de um token de staff para ler o outbox por pull.
 export async function eventsRoutes(app: FastifyInstance) {
-  app.addHook("preHandler", requireStaffAuth);
+  app.addHook("preHandler", requireStaffOrApiKey("events:read"));
 
   app.get("/events", async (request) => {
     const query = listEventsQuerySchema.parse(request.query);

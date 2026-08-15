@@ -763,3 +763,27 @@ model Review {
   @@index([shopId])
   @@map("reviews")
 }
+
+// ---------------------------------------------------------------------------
+// API keys (máquinas — n8n e outros consumidores server-to-server)
+// ---------------------------------------------------------------------------
+
+// keyHash é o que autentica (sha256 da chave sk_... inteira); keyPrefix é só
+// os primeiros caracteres, guardados em claro para o admin reconhecer qual
+// chave é qual numa listagem sem nunca poder ver o segredo de novo — mesmo
+// raciocínio de "últimos 4 dígitos" de cartão.
+model ApiKey {
+  id         String    @id @default(cuid())
+  shopId     String    @default("default") @map("shop_id")
+  name       String
+  keyPrefix  String    @map("key_prefix")
+  keyHash    String    @unique @map("key_hash")
+  scopes     String[]
+  active     Boolean   @default(true)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([shopId])
+  @@map("api_keys")
+}

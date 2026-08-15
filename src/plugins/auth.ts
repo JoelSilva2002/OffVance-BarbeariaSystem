@@ -1,5 +1,8 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { Problem } from "../lib/problem.js";
+import { prisma } from "../lib/prisma.js";
+import { hashApiKey, isApiKeyFormat } from "../lib/tokens.js";
+import type { ApiKeyScope } from "../modules/apikeys/scopes.js";
 
 export interface ClientTokenPayload {
   sub: string; // clientId
@@ -13,11 +16,23 @@ export interface StaffTokenPayload {
   barberId?: string;
 }
 
+export interface ApiKeyContext {
+  apiKeyId: string;
+  scopes: string[];
+}
+
 declare module "fastify" {
   interface FastifyRequest {
     authClient?: ClientTokenPayload;
     authStaff?: StaffTokenPayload;
+    authApiKey?: ApiKeyContext;
   }
+}
+
+function extractBearerToken(request: FastifyRequest): string | null {
+  const header = request.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return null;
+  return header.slice("Bearer ".length);
 }
 
 /**
@@ -81,4 +96,52 @@ export function assertBarberScope(staff: StaffTokenPayload, targetBarberId: stri
   if (staff.barberId !== targetBarberId) {
     throw new Problem(403, "FORBIDDEN", "Você só pode acessar informações da sua própria agenda.");
   }
+}
+
+/**
+ * Autenticação de máquina (docs/ARQUITETURA.md §02: JWT para humanos,
+ * `Bearer sk_live_…` com escopos para máquinas). Cada chamada verifica a
+ * chave contra o hash no banco — nunca guardamos a chave crua — e confere
+ * se TODOS os escopos pedidos pela rota estão na chave; falta de escopo é
+ * 403, não 401 (a chave é válida, só não pode fazer aquilo).
+ */
+export function requireApiKeyAuth(...requiredScopes: ApiKeyScope[]) {
+  return async function apiKeyGuard(request: FastifyRequest, _reply: FastifyReply) {
+    const token = extractBearerToken(request);
+    if (!token) throw new Problem(401, "UNAUTHENTICATED", "Informe uma API key.");
+
+    const apiKey = await prisma.apiKey.findUnique({ where: { keyHash: hashApiKey(token) } });
+    if (!apiKey || !apiKey.active) {
+      throw new Problem(401, "INVALID_API_KEY", "API key inválida ou revogada.");
+    }
+    if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+      throw new Problem(401, "INVALID_API_KEY", "API key expirada.");
+    }
+    const missing = requiredScopes.filter((scope) => !apiKey.scopes.includes(scope));
+    if (missing.length > 0) {
+      throw new Problem(403, "INSUFFICIENT_SCOPE", `Esta API key não tem o escopo necessário: ${missing.join(", ")}.`);
+    }
+
+    // fire-and-forget — não atrasa a resposta por causa de uma atualização de telemetria
+    prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+
+    request.authApiKey = { apiKeyId: apiKey.id, scopes: apiKey.scopes };
+  };
+}
+
+/**
+ * Aceita OU uma sessão de equipe OU uma API key com os escopos pedidos —
+ * decide pelo prefixo do token (`sk_` = API key) sem tentar os dois
+ * caminhos e engolir o primeiro erro, o que confundiria qual credencial
+ * de fato falhou.
+ */
+export function requireStaffOrApiKey(...requiredScopes: ApiKeyScope[]) {
+  const apiKeyGuard = requireApiKeyAuth(...requiredScopes);
+  return async function staffOrApiKeyGuard(request: FastifyRequest, reply: FastifyReply) {
+    const token = extractBearerToken(request);
+    if (token && isApiKeyFormat(token)) {
+      return apiKeyGuard(request, reply);
+    }
+    return requireStaffAuth(request, reply);
+  };
 }
