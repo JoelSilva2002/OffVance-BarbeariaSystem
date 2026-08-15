@@ -349,13 +349,20 @@ refresh token, rate limit, escopo por barbeiro). Módulos como produtos/pedidos/
 fidelidade/relatórios ainda não têm teste automatizado — o padrão em `tests/setup/` já
 dá a base pra estender.
 
+**CI:** `.github/workflows/ci.yml` roda `typecheck` + `build` + a suíte inteira em todo
+push/PR pra `master`, com um Postgres de serviço do próprio GitHub Actions (a imagem já
+cria o database a partir de `POSTGRES_DB` — `migrate deploy` direto, sem precisar do
+`scripts/setup-test-db.ts`, que existe só para o Postgres compartilhado do
+`docker-compose.yml` local). Ainda não tem remoto configurado neste repositório, então
+o workflow existe mas não rodou de verdade em nenhum push ainda — validei a sequência
+inteira (`migrate deploy` → `typecheck` → `build` → `test`) rodando localmente contra um
+banco recém-criado do zero, simulando um runner limpo.
+
 ## O que ainda não existe
 
 Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, mas separa
 "roda no meu Postgres local" de "pronto pra produção":
 
-- **Sem CI** (`.github/workflows` não existe) — a suíte de testes existe mas ainda só
-  roda manualmente.
 - **Cobertura de teste parcial:** produtos/pedidos/pacotes/fidelidade/relatórios ainda
   não têm teste automatizado — ver [Testes automatizados](#testes-automatizados).
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de

@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # A imagem oficial já cria o database a partir de POSTGRES_DB — não
+    # precisa do scripts/setup-test-db.ts (esse é só pra criar o database
+    # num Postgres compartilhado de dev, via docker-compose).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: prisma
+          POSTGRES_PASSWORD: prisma
+          POSTGRES_DB: projeto_prisma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U prisma -d projeto_prisma_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://prisma:prisma@localhost:5432/projeto_prisma_test?schema=public
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # migrate deploy (não migrate dev) — só aplica o que já está commitado,
+      # sem diff/drift detection. Ver README §Migrações para o porquê disso importar.
+      - run: npx prisma migrate deploy
+
+      - run: pnpm typecheck
+
+      - run: pnpm build
+
+      - run: pnpm test
