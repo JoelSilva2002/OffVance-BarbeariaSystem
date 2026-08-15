@@ -350,7 +350,9 @@ tests/
     dates.ts      # nextWeekdayAt() — cai dentro da grade seg-sex dos fixtures
   unit/            # lógica pura, sem banco: álgebra de intervalos, hash de senha, tokens
   integration/     # contra o banco de teste: reserva/concorrência, ciclo de vida,
-                    # autenticação de equipe (login/bloqueio/refresh/rate limit), escopo por barbeiro
+                    # autenticação de equipe (login/bloqueio/refresh/rate limit), escopo
+                    # por barbeiro, API key, produtos/pedidos, pacotes/créditos,
+                    # fidelidade, relatórios
 ```
 
 `fileParallelism: false` no `vitest.config.ts` — todo teste de integração bate no MESMO
@@ -359,14 +361,18 @@ atropelar o teste de outro). Testes de login criam uma instância nova do app a 
 `it()` — o rate limiter guarda estado em memória por instância, então reusar o app entre
 testes de tentativa de senha faria as tentativas de um contarem pro limite do próximo.
 
-A cobertura hoje é deliberadamente focada no que é mais arriscado errar, não em cada
-endpoint: a constraint de exclusão sob concorrência real (50 requisições simultâneas —
+A cobertura é focada no que é mais arriscado errar, não em cobrir cada endpoint por
+igual: a constraint de exclusão sob concorrência real (50 requisições simultâneas —
 versão automatizada de `scripts/concurrency-test.ts`, que continua existindo à parte
 como ferramenta de carga manual contra um servidor de verdade), a máquina de estados do
-agendamento, e autenticação/segurança (bloqueio de conta, rotação e detecção de reuso de
-refresh token, rate limit, escopo por barbeiro). Módulos como produtos/pedidos/pacotes/
-fidelidade/relatórios ainda não têm teste automatizado — o padrão em `tests/setup/` já
-dá a base pra estender.
+agendamento, autenticação/segurança (bloqueio de conta, rotação e detecção de reuso de
+refresh token, rate limit, escopo por barbeiro, escopo de API key), e as travas
+transacionais do lado financeiro — estoque com `SELECT ... FOR UPDATE` recusando venda
+além do saldo (`products`/`orders`), crédito de pacote debitado com a mesma trava e
+recusado quando expirado/fora de escopo/sem saldo (`packages`), pontos de fidelidade
+ganhos e resgatados corretamente na conclusão de atendimento — inclusive o caso de
+pagamento por pacote não gerar pontos novos (`loyalty`) — e os dashboards de agendamento
+e financeiro batendo com os números reais gravados no período (`reports`).
 
 **CI:** `.github/workflows/ci.yml` roda `typecheck` + `build` + a suíte inteira em todo
 push/PR pra `master`, com um Postgres de serviço do próprio GitHub Actions (a imagem já
@@ -426,8 +432,6 @@ compose (`/health` e `/health/db` respondendo, `HEALTHCHECK` do próprio Docker 
 Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, mas separa
 "roda no meu Postgres local" de "pronto pra produção":
 
-- **Cobertura de teste parcial:** produtos/pedidos/pacotes/fidelidade/relatórios ainda
-  não têm teste automatizado — ver [Testes automatizados](#testes-automatizados).
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
 - **API key ainda não cobre barbeiros/catálogo/financeiro** — só agendamentos, eventos e
