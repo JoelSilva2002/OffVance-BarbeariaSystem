@@ -18,3 +18,8 @@ export function dayRangeInTimezone(date: string, timezone: string): { from: stri
   const end = start.endOf("day");
   return { from: start.toUTC().toISO()!, to: end.toUTC().toISO()! };
 }
+
+/** A grade de horários vem como datetime ISO com data-placeholder (1970-01-01T09:00:00Z) — só a hora importa. */
+export function isoTimeToHHmm(iso: string): string {
+  return DateTime.fromISO(iso, { zone: "utc" }).toFormat("HH:mm");
+}
