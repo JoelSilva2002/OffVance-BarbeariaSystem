@@ -44,10 +44,18 @@ src/
   components/
     ui/            # primitivas shadcn/ui
     layout/         # AppLayout (sidebar + shell)
-    shared/          # StatusBadge, RequireAuth, RequireAdmin
+    shared/          # StatusBadge, RequireAuth, RequireAdmin, ClientPicker
   features/
     auth/           # Login, esqueci minha senha, redefinir senha
-    agenda/          # agenda do dia (em construção)
-    staff/            # colaboradores e catálogo (em construção)
-    financeiro/        # pedidos, pacotes, relatórios (em construção)
+    agenda/          # agenda do dia, ciclo de vida, novo agendamento
+    staff/            # colaboradores (perfil/serviços/grade/folgas)
+    catalog/           # categorias e serviços
+    financeiro/         # pedidos, pacotes, fidelidade, relatórios (ADMIN)
 ```
+
+## Papéis
+
+`ADMIN` vê tudo. `BARBER` vê a própria agenda (a API já escopa sozinha — o filtro de
+barbeiro nem aparece pra ele) e o menu esconde "Equipe e catálogo" e a aba "Relatórios"
+do Financeiro — não é o frontend decidindo permissão, é só evitar abrir uma tela que a
+API recusaria com 403.

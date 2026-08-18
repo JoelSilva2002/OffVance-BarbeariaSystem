@@ -509,15 +509,22 @@ pnpm dev                 # http://localhost:5173
 ```
 
 Login de equipe (e-mail+senha), com sessão restaurada automaticamente após F5 via
-refresh token guardado no `localStorage` — o access token fica só em memória. Em
-construção: agenda do dia, colaboradores/catálogo e financeiro ainda são placeholders.
+refresh token guardado no `localStorage` — o access token fica só em memória.
+
+Escopo v1 completo: **Agenda** (visão do dia, ciclo de vida completo do agendamento,
+novo agendamento com busca/cadastro de cliente e escolha de horário), **Equipe e
+catálogo** (colaboradores, grade semanal, folgas, serviços — ADMIN-only, escondido da
+navegação pra `BARBER`) e **Financeiro** (pedidos, pacotes, fidelidade e — só pra
+`ADMIN` — relatórios). `BARBER` vê a própria agenda automaticamente (a API já escopa) e
+o menu esconde tudo que a API recusaria com 403.
+
+Fora do escopo v1, de propósito: portal do cliente, tela de `shop-settings`, gestão de
+API keys pela interface.
 
 ## O que ainda não existe
 
 Levantamento honesto do que falta — nada aqui bloqueia o sistema funcionar, mas separa
 "roda no meu Postgres local" de "pronto pra produção":
 
-- **Painel da equipe incompleto** — só o login está pronto; agenda, colaboradores/
-  catálogo e financeiro ainda não têm interface (ver seção acima).
 - **Sem revogação de sessão em massa** a pedido do usuário (só existe via detecção de
   reuso de refresh token).
