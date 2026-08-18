@@ -52,3 +52,29 @@ jobs:
       - run: pnpm build
 
       - run: pnpm test
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    # Projeto próprio, isolado do workspace pnpm da raiz (tem seu próprio
+    # pnpm-workspace.yaml vazio — ver frontend/README.md) — por isso os
+    # passos rodam a partir de frontend/, com lockfile e install próprios.
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      # `tsc -b && vite build` — typecheck e build de produção num passo só.
+      - run: pnpm build
