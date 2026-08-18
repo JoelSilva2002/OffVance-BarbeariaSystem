@@ -38,3 +38,22 @@ export function renderAppointmentReceiptWhatsApp(payload: {
     "Até a próxima ✂️",
   ].join("\n");
 }
+
+export function renderAppointmentCancelledWhatsApp(payload: { clientName: string; startsAtLocal: string }): string {
+  return [
+    `Oi, ${payload.clientName}. Seu horário na ${env.SHOP_NAME} de ${payload.startsAtLocal} foi cancelado.`,
+    "Quer marcar outro horário? É só falar com a gente.",
+  ].join("\n");
+}
+
+export function renderAppointmentRescheduledWhatsApp(payload: {
+  clientName: string;
+  previousStartsAtLocal: string;
+  startsAtLocal: string;
+}): string {
+  return [
+    `Oi, ${payload.clientName}! Seu horário na ${env.SHOP_NAME} foi remarcado:`,
+    `De ${payload.previousStartsAtLocal} para 📅 ${payload.startsAtLocal}`,
+    "Precisa mudar de novo? Fale com a gente.",
+  ].join("\n");
+}

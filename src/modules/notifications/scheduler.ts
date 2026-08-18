@@ -1,4 +1,4 @@
-import type { Appointment, Prisma } from "@prisma/client";
+import type { ActorType, Appointment, Prisma } from "@prisma/client";
 
 interface ReminderSettings {
   autoConfirmHoursBefore: number;
@@ -112,6 +112,98 @@ export async function scheduleReceipt(
         payload,
         scheduledFor: new Date(),
         dedupKey: `receipt-email:${appointment.id}`,
+      },
+    });
+  }
+}
+
+/**
+ * Só o backend sabe quem cancelou — `appointmentEventPayload()` não carrega
+ * `actorType`, e avisar "seu horário foi cancelado" pra quem acabou de
+ * cancelar pelo portal é ruído. Por isso o early-return aqui, não um filtro
+ * no n8n reagindo a `appointment.cancelled` (ver plano §Fase 5).
+ */
+export async function scheduleCancellationNotice(tx: Prisma.TransactionClient, appointment: Appointment, actorType: ActorType) {
+  if (!appointment.clientId || actorType === "CLIENT") return;
+
+  const payload = {
+    appointmentId: appointment.id,
+    code: appointment.code,
+    startsAt: appointment.startsAt.toISOString(),
+  };
+
+  // update: {} — igual ao recibo, não acontece duas vezes pro mesmo agendamento
+  await tx.notification.upsert({
+    where: { dedupKey: `cancellation:${appointment.id}` },
+    update: {},
+    create: {
+      clientId: appointment.clientId,
+      channel: "WHATSAPP",
+      template: "appointment_cancelled",
+      payload,
+      scheduledFor: new Date(),
+      dedupKey: `cancellation:${appointment.id}`,
+    },
+  });
+
+  if (await hasEmail(tx, appointment.clientId)) {
+    await tx.notification.upsert({
+      where: { dedupKey: `cancellation-email:${appointment.id}` },
+      update: {},
+      create: {
+        clientId: appointment.clientId,
+        channel: "EMAIL",
+        template: "appointment_cancelled",
+        payload,
+        scheduledFor: new Date(),
+        dedupKey: `cancellation-email:${appointment.id}`,
+      },
+    });
+  }
+}
+
+/** Mesmo early-return de `scheduleCancellationNotice` — mesmo motivo. */
+export async function scheduleRescheduleNotice(
+  tx: Prisma.TransactionClient,
+  appointment: Appointment,
+  previousStartsAt: Date,
+  actorType: ActorType,
+) {
+  if (!appointment.clientId || actorType === "CLIENT") return;
+
+  const payload = {
+    appointmentId: appointment.id,
+    code: appointment.code,
+    previousStartsAt: previousStartsAt.toISOString(),
+    startsAt: appointment.startsAt.toISOString(),
+  };
+
+  // scheduledFor/status re-armados — igual ao lembrete: uma segunda
+  // remarcação reenvia em vez de ficar presa no aviso da primeira
+  await tx.notification.upsert({
+    where: { dedupKey: `reschedule:${appointment.id}` },
+    update: { scheduledFor: new Date(), status: "PENDING", sentAt: null, payload },
+    create: {
+      clientId: appointment.clientId,
+      channel: "WHATSAPP",
+      template: "appointment_rescheduled",
+      payload,
+      scheduledFor: new Date(),
+      dedupKey: `reschedule:${appointment.id}`,
+    },
+  });
+
+  if (await hasEmail(tx, appointment.clientId)) {
+    await tx.notification.upsert({
+      where: { dedupKey: `reschedule-email:${appointment.id}` },
+      update: { scheduledFor: new Date(), status: "PENDING", sentAt: null, payload },
+      create: {
+        clientId: appointment.clientId,
+        channel: "EMAIL",
+        template: "appointment_rescheduled",
+        payload,
+        scheduledFor: new Date(),
+        dedupKey: `reschedule-email:${appointment.id}`,
       },
     });
   }

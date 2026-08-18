@@ -3,8 +3,10 @@ import { prisma } from "../../lib/prisma.js";
 import { getShopSettings } from "../scheduling/shop-settings.service.js";
 import { formatLocalDateTime, PAYMENT_METHOD_LABELS } from "./format.js";
 import {
+  renderAppointmentCancelledWhatsApp,
   renderAppointmentReceiptWhatsApp,
   renderAppointmentReminderWhatsApp,
+  renderAppointmentRescheduledWhatsApp,
   renderOtpCodeWhatsApp,
 } from "./whatsapp-templates.js";
 
@@ -60,6 +62,23 @@ export async function renderWhatsAppMessage(notification: Notification, recipien
         amountReais: ((payload.amountPaidCents as number) / 100).toFixed(2).replace(".", ","),
         paymentMethodLabel: PAYMENT_METHOD_LABELS[payload.paymentMethod as PaymentMethod] ?? String(payload.paymentMethod),
       });
+
+    case "appointment_cancelled": {
+      const settings = await getShopSettings();
+      return renderAppointmentCancelledWhatsApp({
+        clientName: recipientName,
+        startsAtLocal: formatLocalDateTime(payload.startsAt as string, settings.timezone),
+      });
+    }
+
+    case "appointment_rescheduled": {
+      const settings = await getShopSettings();
+      return renderAppointmentRescheduledWhatsApp({
+        clientName: recipientName,
+        previousStartsAtLocal: formatLocalDateTime(payload.previousStartsAt as string, settings.timezone),
+        startsAtLocal: formatLocalDateTime(payload.startsAt as string, settings.timezone),
+      });
+    }
 
     default:
       return null;

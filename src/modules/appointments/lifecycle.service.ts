@@ -9,7 +9,13 @@ import type { CompletionPaymentInput, RescheduleBody } from "./lifecycle.schema.
 import { recordAppointmentEvent } from "../outbox/outbox.recorder.js";
 import { APPOINTMENT_EVENT } from "../outbox/event-types.js";
 import { appointmentEventPayload } from "../outbox/appointment-payload.js";
-import { cancelReminder, scheduleReceipt, scheduleReminder } from "../notifications/scheduler.js";
+import {
+  cancelReminder,
+  scheduleCancellationNotice,
+  scheduleReceipt,
+  scheduleReminder,
+  scheduleRescheduleNotice,
+} from "../notifications/scheduler.js";
 import { consumePackageCredit } from "../packages/client-packages.service.js";
 import { earnPoints, redeemPoints } from "../loyalty/loyalty.service.js";
 
@@ -166,6 +172,10 @@ export async function cancelAppointment(id: string, actorType: ActorType, actorI
       appointmentEventPayload(updated, { reason: reason ?? null }),
     );
     await cancelReminder(tx, id);
+    // depois de matar o lembrete velho, não antes — ordem importa (ver
+    // scheduler.ts: os dedup_keys são independentes, mas semanticamente o
+    // aviso de cancelamento substitui o lembrete que não faz mais sentido)
+    await scheduleCancellationNotice(tx, updated, actorType);
     return updated;
     // Estorno de crédito de pacote entra quando a tabela existir (fase 5).
   });
@@ -264,6 +274,7 @@ export async function rescheduleAppointment(
         );
         // mesmo dedup_key do lembrete original — reagenda no lugar de duplicar
         await scheduleReminder(tx, updated, settings);
+        await scheduleRescheduleNotice(tx, updated, oldStartsAt, actorType);
 
         return updated;
       },

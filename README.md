@@ -336,13 +336,27 @@ configurado — nenhuma variável de ambiente da API muda quando o provedor muda
 `src/lib/phone.ts` normaliza o telefone recebido de volta (JID do WhatsApp, com/sem `+`,
 com/sem o 9º dígito) pra bater com o que está salvo em `users.phone`.
 
-**Setup completo (Evolution API self-hosted + workflow de saída pronto pra importar):**
+Templates novos custam **zero** mudança de n8n — a prova disso é o cancelamento/remarcação
+(`appointment_cancelled`/`appointment_rescheduled`, `src/modules/notifications/scheduler.ts`):
+avisam o cliente quando a equipe cancela ou remarca (nunca quando é o próprio cliente que
+faz — `appointmentEventPayload()` não carrega `actorType`, só o backend sabe quem agiu, e
+avisar quem acabou de cancelar seria ruído), passam pelo mesmo `notification.due` de sempre,
+e o workflow de saída não precisou de nenhum nó novo pra entregá-los.
+
+**Resposta do cliente** (WF-2, `n8n/workflows/evolution-inbound-reply.json`): responder
+"SIM" a um lembrete confirma o agendamento mais próximo automaticamente (`GET
+/clients?phone=` + `GET /appointments?status=AGENDADO` + `POST /appointments/:id/confirm`,
+escopo `clients:read` novo). "NÃO" não cancela nesta versão — só encaminha pra falar com a
+equipe, porque `cancelAppointment` só aplica o prazo mínimo de cancelamento quando
+`actorType === "CLIENT"`, e uma API key resolve como `"API"` (sem essa restrição).
+
+**Setup completo (Evolution API self-hosted + os dois workflows prontos pra importar):**
 ver [`n8n/README.md`](n8n/README.md). Resumo: `docker compose --profile whatsapp up -d`
 sobe `n8n` + `evolution` num perfil próprio (não no `full`, pra não obrigar quem só quer
-testar a imagem da API a subir uma stack de WhatsApp junto); `n8n/workflows/*.json` tem o
-workflow de entrega pronto pra importar. Evolution é a escolha consciente de v1 — não
-oficial, sem verificação de negócio, risco de banimento aceito; trocar por outro provedor
-depois é mudar um nó HTTP no n8n, a API não muda uma linha.
+testar a imagem da API a subir uma stack de WhatsApp junto); `n8n/workflows/*.json` tem os
+workflows prontos pra importar. Evolution é a escolha consciente de v1 — não oficial, sem
+verificação de negócio, risco de banimento aceito; trocar por outro provedor depois é
+mudar um nó HTTP no n8n, a API não muda uma linha.
 
 ## Notificações por e-mail (Resend)
 

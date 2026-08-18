@@ -72,6 +72,37 @@ export function renderAppointmentReceiptEmail(payload: {
   };
 }
 
+export function renderAppointmentCancelledEmail(payload: { code: string; startsAtLocal: string }): EmailContent {
+  return {
+    subject: `Agendamento cancelado — ${payload.startsAtLocal}`,
+    html: wrapHtml(`
+      <h1 style="font-size:18px;margin:0 0 16px;">Agendamento cancelado</h1>
+      <p style="color:#333;margin:0 0 8px;">Seu horário foi cancelado:</p>
+      <p style="font-size:20px;font-weight:700;margin:16px 0;color:#111;">${payload.startsAtLocal}</p>
+      <p style="color:#666;font-size:14px;margin:0;">Código do agendamento: ${payload.code}. Quer marcar outro horário? Fale com a gente.</p>
+    `),
+    text: `Seu horário de ${payload.startsAtLocal} (código ${payload.code}) foi cancelado. Quer marcar outro? Fale com a gente.`,
+  };
+}
+
+export function renderAppointmentRescheduledEmail(payload: {
+  code: string;
+  previousStartsAtLocal: string;
+  startsAtLocal: string;
+}): EmailContent {
+  return {
+    subject: `Agendamento remarcado — novo horário ${payload.startsAtLocal}`,
+    html: wrapHtml(`
+      <h1 style="font-size:18px;margin:0 0 16px;">Agendamento remarcado</h1>
+      <p style="color:#333;margin:0 0 8px;">Seu horário mudou:</p>
+      <p style="font-size:14px;color:#999;text-decoration:line-through;margin:0 0 4px;">${payload.previousStartsAtLocal}</p>
+      <p style="font-size:20px;font-weight:700;margin:0 0 16px;color:#111;">${payload.startsAtLocal}</p>
+      <p style="color:#666;font-size:14px;margin:0;">Código do agendamento: ${payload.code}.</p>
+    `),
+    text: `Seu horário (código ${payload.code}) foi remarcado de ${payload.previousStartsAtLocal} para ${payload.startsAtLocal}.`,
+  };
+}
+
 export function renderPasswordResetEmail(payload: { token: string; expiresInMin: number }): EmailContent {
   // Sem painel administrativo com URL própria ainda (sistema é API-first —
   // ver docs/ARQUITETURA.md), o e-mail mostra o token cru para colar onde
