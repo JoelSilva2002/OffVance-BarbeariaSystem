@@ -1,0 +1,467 @@
+{
+  "name": "evolution-inbound-reply",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## evolution-inbound-reply (entrada)\n\nRecebe `messages.upsert` do Evolution (mensagem de WhatsApp chegando) e, se for uma resposta afirmativa a um lembrete, confirma o agendamento mais próximo do cliente via `POST /appointments/:id/confirm`.\n\n**Escopo deliberadamente pequeno — leia antes de ativar:**\n1. **\"NÃO\" não cancela.** O lembrete (`whatsapp-templates.ts`) já diz \"pra cancelar ou remarcar, fale com a gente\" — uma resposta negativa aqui só ecoa isso, nunca chama `/cancel`. Motivo: `cancelAppointment` só aplica o prazo mínimo de cancelamento quando `actorType === \"CLIENT\"`; uma API key resolve como `\"API\"` (sem restrição), então uma automação cancelando abriria brecha pro prazo. Ver plano `shiny-knitting-pony.md` §\"NÃO não cancela\".\n2. **Mensagem não reconhecida vira silêncio, não spam.** Só SIM-like e NÃO-like disparam resposta; qualquer outro texto (pergunta, saudação, o que for) é ignorado — a régua de intenção é propositalmente estreita pra não virar um chatbot genérico.\n3. **O formato exato do payload do Evolution (`data.key.remoteJid`, `data.message.conversation`, `data.messageType`) foi pesquisado, não confirmado contra uma instância real** — abra o log de execução da primeira mensagem de teste e confira contra o nó \"Extrai e classifica\" antes de confiar no fluxo.\n4. **O eco de data/hora na confirmação usa fuso fixo `America/Sao_Paulo`**, não `ShopSettings.timezone` — única exceção ao princípio \"a API renderiza o texto\" deste projeto, aceita porque é uma barbearia só (não multi-tenant) e a resposta de `/confirm` não vem pré-formatada. Se a loja um dia mudar de fuso, esta linha precisa ser atualizada manualmente.\n5. **`PRISMA_API_KEY` precisa ganhar escopos novos** (`clients:read`, `appointments:read`, `appointments:write`) além do `notifications:write` que já tinha — ver `credentials/README.md`.",
+        "height": 480,
+        "width": 460
+      },
+      "id": "note-1",
+      "name": "Leia antes de ativar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-220, -120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "evolution-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Recebe mensagem",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [280, 200],
+      "webhookId": "evolution-inbound"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Payload do Evolution v2 (messages.upsert) pesquisado contra a doc/gists\n// públicos, não confirmado contra uma instância real — ver sticky note.\nfunction normalize(s) {\n  return String(s || '')\n    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n    .trim()\n    .toLowerCase();\n}\n\nconst body = $input.first().json.body || {};\nconst data = body.data || {};\nconst key = data.key || {};\n\nconst remoteJid = String(key.remoteJid || '');\nconst fromMe = Boolean(key.fromMe);\nconst isGroup = remoteJid.endsWith('@g.us');\n// número \"puro\" (sem sufixo de JID) pra responder pelo Evolution — manda\n// pro mesmo remetente que a mensagem chegou, sem depender de normalização.\nconst phoneDigits = remoteJid.replace(/@.*$/, '');\n\nconst messageType = data.messageType;\nconst text = (data.message && (data.message.conversation || (data.message.extendedTextMessage && data.message.extendedTextMessage.text))) || '';\nconst isText = (messageType === 'conversation' || messageType === 'extendedTextMessage') && Boolean(text);\n\nconst skip = fromMe || isGroup || !isText;\n\n// Régua estreita de propósito (ver sticky note #2): só o que o lembrete\n// (whatsapp-templates.ts) convida a responder.\nconst AFFIRMATIVE = ['sim', 's', 'ok', 'confirmar', 'confirmo', '1', '\\ud83d\\udc4d', 'blz', 'beleza'];\nconst NEGATIVE = ['nao', 'n', '2', '\\ud83d\\udc4e', 'cancelar', 'cancela'];\n\nconst normalized = normalize(text);\nlet intent = 'other';\nif (AFFIRMATIVE.includes(normalized)) intent = 'yes';\nelse if (NEGATIVE.includes(normalized)) intent = 'no';\n\nreturn [{ json: { skip, phoneDigits, text, intent } }];"
+      },
+      "id": "extract",
+      "name": "Extrai e classifica",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-skip",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            },
+            {
+              "id": "cond-intent",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "other",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-follow",
+      "name": "Seguir? (não é fromMe/grupo/mídia e a intenção foi reconhecida)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"received\": true, \"ignored\": true } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond-ignored",
+      "name": "200 OK (ignorado)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-yes",
+              "leftValue": "={{ $json.intent }}",
+              "rightValue": "yes",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-yes",
+      "name": "Intenção = SIM?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [940, 100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg-atendimento",
+              "name": "replyText",
+              "value": "Sem problema! Pra cancelar ou remarcar, é só falar com a gente por aqui mesmo.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-atendimento",
+      "name": "Msg: encaminha pra atendimento",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1160, 260]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.PRISMA_API_URL }}/clients",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [{ "name": "phone", "value": "={{ $('Extrai e classifica').item.json.phoneDigits }}" }]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $env.PRISMA_API_KEY }}" }]
+        },
+        "options": {}
+      },
+      "id": "http-find-client",
+      "name": "Busca cliente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-client-found",
+              "leftValue": "={{ $json.clients.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-client-found",
+      "name": "Cliente encontrado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1380, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg-sem-cadastro",
+              "name": "replyText",
+              "value": "Não encontramos seu cadastro por aqui. Fale com a gente pra confirmar seu horário.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-sem-cadastro",
+      "name": "Msg: sem cadastro",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1600, 140]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.PRISMA_API_URL }}/appointments",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "clientId", "value": "={{ $json.clients[0].id }}" },
+            { "name": "status", "value": "AGENDADO" },
+            { "name": "from", "value": "={{ new Date().toISOString() }}" },
+            { "name": "limit", "value": "1" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $env.PRISMA_API_KEY }}" }]
+        },
+        "options": {}
+      },
+      "id": "http-find-appointment",
+      "name": "Busca agendamento pendente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1600, -80]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-appt-found",
+              "leftValue": "={{ $json.appointments.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-appt-found",
+      "name": "Tem agendamento pendente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1820, -80]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg-sem-agendamento",
+              "name": "replyText",
+              "value": "Não encontramos nenhum horário pendente de confirmação no seu nome. Fale com a gente se precisar de ajuda.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-sem-agendamento",
+      "name": "Msg: sem agendamento pendente",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2040, 60]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.PRISMA_API_URL }}/appointments/{{ $json.appointments[0].id }}/confirm",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $env.PRISMA_API_KEY }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {} }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "http-confirm",
+      "name": "Confirma agendamento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2040, -180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-200",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 200,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-200",
+      "name": "Confirmou (200)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2260, -180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg-confirmado",
+              "name": "replyText",
+              "value": "=Confirmado ✅ Te esperamos {{ DateTime.fromISO($json.body.startsAt).setZone('America/Sao_Paulo').setLocale('pt-BR').toFormat(\"dd/MM 'às' HH:mm\") }}.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-confirmado",
+      "name": "Msg: confirmado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2480, -280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-409",
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 409,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-409",
+      "name": "Já estava confirmado (409)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2480, -80]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg-ja-confirmado",
+              "name": "replyText",
+              "value": "Seu horário já estava confirmado 👍",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-ja-confirmado",
+      "name": "Msg: já estava confirmado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2700, -140]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg-erro",
+              "name": "replyText",
+              "value": "Não conseguimos confirmar seu horário agora. Fale com a gente pra confirmar direto.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-erro",
+      "name": "Msg: erro genérico",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2700, 20]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"number\": $('Extrai e classifica').item.json.phoneDigits, \"text\": $json.replyText } }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "send-evolution",
+      "name": "Envia via Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2920, -60]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"received\": true } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond-ok",
+      "name": "200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [3140, -60]
+    }
+  ],
+  "connections": {
+    "Recebe mensagem": { "main": [[{ "node": "Extrai e classifica", "type": "main", "index": 0 }]] },
+    "Extrai e classifica": { "main": [[{ "node": "Seguir? (não é fromMe/grupo/mídia e a intenção foi reconhecida)", "type": "main", "index": 0 }]] },
+    "Seguir? (não é fromMe/grupo/mídia e a intenção foi reconhecida)": {
+      "main": [
+        [{ "node": "Intenção = SIM?", "type": "main", "index": 0 }],
+        [{ "node": "200 OK (ignorado)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Intenção = SIM?": {
+      "main": [
+        [{ "node": "Busca cliente", "type": "main", "index": 0 }],
+        [{ "node": "Msg: encaminha pra atendimento", "type": "main", "index": 0 }]
+      ]
+    },
+    "Msg: encaminha pra atendimento": { "main": [[{ "node": "Envia via Evolution", "type": "main", "index": 0 }]] },
+    "Busca cliente": { "main": [[{ "node": "Cliente encontrado?", "type": "main", "index": 0 }]] },
+    "Cliente encontrado?": {
+      "main": [
+        [{ "node": "Busca agendamento pendente", "type": "main", "index": 0 }],
+        [{ "node": "Msg: sem cadastro", "type": "main", "index": 0 }]
+      ]
+    },
+    "Msg: sem cadastro": { "main": [[{ "node": "Envia via Evolution", "type": "main", "index": 0 }]] },
+    "Busca agendamento pendente": { "main": [[{ "node": "Tem agendamento pendente?", "type": "main", "index": 0 }]] },
+    "Tem agendamento pendente?": {
+      "main": [
+        [{ "node": "Confirma agendamento", "type": "main", "index": 0 }],
+        [{ "node": "Msg: sem agendamento pendente", "type": "main", "index": 0 }]
+      ]
+    },
+    "Msg: sem agendamento pendente": { "main": [[{ "node": "Envia via Evolution", "type": "main", "index": 0 }]] },
+    "Confirma agendamento": { "main": [[{ "node": "Confirmou (200)?", "type": "main", "index": 0 }]] },
+    "Confirmou (200)?": {
+      "main": [
+        [{ "node": "Msg: confirmado", "type": "main", "index": 0 }],
+        [{ "node": "Já estava confirmado (409)?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Msg: confirmado": { "main": [[{ "node": "Envia via Evolution", "type": "main", "index": 0 }]] },
+    "Já estava confirmado (409)?": {
+      "main": [
+        [{ "node": "Msg: já estava confirmado", "type": "main", "index": 0 }],
+        [{ "node": "Msg: erro genérico", "type": "main", "index": 0 }]
+      ]
+    },
+    "Msg: já estava confirmado": { "main": [[{ "node": "Envia via Evolution", "type": "main", "index": 0 }]] },
+    "Msg: erro genérico": { "main": [[{ "node": "Envia via Evolution", "type": "main", "index": 0 }]] },
+    "Envia via Evolution": { "main": [[{ "node": "200 OK", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

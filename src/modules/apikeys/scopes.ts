@@ -33,6 +33,10 @@ export const API_KEY_SCOPES = [
   // para um cliente — as duas ações que efetivamente movimentam dinheiro.
   "financeiro:read",
   "financeiro:write",
+  // Só leitura — achar um cliente pelo telefone (WF-2, resposta do WhatsApp
+  // no n8n). Cadastrar cliente (POST /clients) continua staff-only: é
+  // operação de balcão, não algo que um bot deveria fazer sozinho.
+  "clients:read",
 ] as const;
 
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];

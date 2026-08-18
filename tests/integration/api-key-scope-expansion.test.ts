@@ -11,6 +11,7 @@ import {
   staffLogin,
 } from "../setup/fixtures.js";
 import { nextWeekdayAt } from "../setup/dates.js";
+import { phoneLookupVariants } from "../../src/lib/phone.js";
 
 /**
  * Escopos ampliados de API key (docs/ARQUITETURA.md §02): barbers:*,
@@ -296,6 +297,44 @@ describe("API key — escopos de barbeiros, catálogo e financeiro", () => {
         headers: { authorization: `Bearer ${unrelatedKey.key}` },
       });
       expect(reportRes.statusCode).toBe(403);
+    });
+  });
+
+  describe("clients:read", () => {
+    it("chave com clients:read acha cliente pela grafia de telefone que o Evolution manda; sem o escopo é 403", async () => {
+      const { user, client } = await createClientUser();
+      const readKey = await createApiKey(app, adminToken, ["clients:read"]);
+      // simula o JID que o Evolution entrega num webhook de entrada, não o
+      // formato salvo em `users.phone` — é phoneLookupVariants que faz a ponte.
+      const [asJidDigits] = phoneLookupVariants(user.phone);
+
+      const res = await app.inject({
+        method: "GET",
+        url: `/clients?phone=${encodeURIComponent(`${asJidDigits}@s.whatsapp.net`)}`,
+        headers: { authorization: `Bearer ${readKey.key}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().clients.map((c: { id: string }) => c.id)).toEqual([client.id]);
+
+      const unrelatedKey = await createApiKey(app, adminToken, ["appointments:write"]);
+      const denied = await app.inject({
+        method: "GET",
+        url: `/clients?phone=${encodeURIComponent(user.phone)}`,
+        headers: { authorization: `Bearer ${unrelatedKey.key}` },
+      });
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json().title).toBe("INSUFFICIENT_SCOPE");
+    });
+
+    it("cadastro de cliente (POST) continua staff-only mesmo com clients:read", async () => {
+      const readKey = await createApiKey(app, adminToken, ["clients:read"]);
+      const res = await app.inject({
+        method: "POST",
+        url: "/clients",
+        headers: { authorization: `Bearer ${readKey.key}` },
+        payload: { fullName: "Via API key", phone: "+5511944443333" },
+      });
+      expect(res.statusCode).toBe(401);
     });
   });
 

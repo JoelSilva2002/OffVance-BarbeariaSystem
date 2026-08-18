@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { Problem } from "../../lib/problem.js";
+import { phoneLookupVariants } from "../../lib/phone.js";
 import type { CreateClientInput } from "./clients.schema.js";
 
 /**
@@ -26,6 +27,26 @@ export async function searchClients(search: string, limit: number) {
     phone: client.user.phone,
     email: client.user.email,
   }));
+}
+
+/**
+ * Achar cliente por telefone — identidade exata (0 ou 1 resultado), não
+ * busca difusa. Usado pelo WF-2 do n8n (resposta do cliente no WhatsApp)
+ * pra resolver quem mandou a mensagem antes de agir num agendamento;
+ * `phoneLookupVariants` cobre as grafias plausíveis do que o JID do
+ * Evolution manda vs. o que está salvo em `users.phone`.
+ */
+export async function findClientByPhone(phone: string) {
+  const variants = phoneLookupVariants(phone);
+  if (variants.length === 0) return null;
+
+  const client = await prisma.client.findFirst({
+    where: { user: { phone: { in: variants } } },
+    include: { user: { select: { phone: true, email: true } } },
+  });
+  if (!client) return null;
+
+  return { id: client.id, fullName: client.fullName, phone: client.user.phone, email: client.user.email };
 }
 
 /**

@@ -127,6 +127,21 @@ describe("ciclo de vida do agendamento", () => {
     expect(res.json().title).toBe("INVALID_TRANSITION");
   });
 
+  // Pin explícito pro WF-2 do n8n (resposta "SIM" no WhatsApp): sweepAutoConfirm
+  // já confirma sozinho todo AGENDADO a menos de 60min do início, então um
+  // cliente respondendo perto do horário BATE nesse 409 rotineiramente — não é
+  // erro, é o workflow precisando responder "já estava confirmado" em vez de
+  // tratar como falha.
+  it("confirmar um agendamento já CONFIRMADO devolve 409 INVALID_TRANSITION (não 200 idempotente)", async () => {
+    const appointment = await createAppointment();
+    const first = await app.inject({ method: "POST", url: `/appointments/${appointment.id}/confirm`, headers: authHeader(), payload: {} });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({ method: "POST", url: `/appointments/${appointment.id}/confirm`, headers: authHeader(), payload: {} });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().title).toBe("INVALID_TRANSITION");
+  });
+
   it("recusa marcar falta a partir de AGENDADO (só depois de CONFIRMADO)", async () => {
     const appointment = await createAppointment();
     const res = await app.inject({ method: "POST", url: `/appointments/${appointment.id}/no-show`, headers: authHeader(), payload: {} });
