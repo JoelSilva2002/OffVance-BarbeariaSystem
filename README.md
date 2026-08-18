@@ -321,9 +321,20 @@ própria agenda) · 🔒 só `ADMIN` · 🤖 aceita também API key com o escopo
 Todo evento de negócio (agendamento criado/confirmado/cancelado/concluído, notificação
 pronta para envio, avaliação recebida) vai para uma tabela de outbox e é entregue por
 webhook assinado (`X-Prisma-Signature`, HMAC-SHA256) a quem estiver cadastrado em
-`POST /webhook-endpoints`. Retry com backoff exponencial; endpoint some desativado
-automaticamente após falhas consecutivas demais. `GET /events?since=` é o fallback de
-pull para quando o push não é viável.
+`POST /webhook-endpoints`. Retry com backoff exponencial (1min/5min/30min/2h/6h); endpoint
+some desativado automaticamente após 5 entregas abandonadas seguidas. `GET /events?since=`
+é o fallback de pull para quando o push não é viável.
+
+**`notification.due`** é o evento que carrega WhatsApp de verdade: além de
+`notificationId`/`clientId`/`channel`/`template`, o payload já vem com
+`recipient: {phone, name}` e `message: {text}` — a API resolve destinatário e renderiza
+o texto (fuso da loja, formatação pt-BR) no momento do despacho, igual já faz pro canal
+de e-mail (`src/modules/notifications/whatsapp-dispatch.service.ts`, espelhando
+`email-dispatch.service.ts`). Um workflow do n8n não precisa saber nada de regra de
+negócio: só lê `recipient.phone` e manda `message.text` pro provedor de WhatsApp
+configurado — nenhuma variável de ambiente da API muda quando o provedor muda.
+`src/lib/phone.ts` normaliza o telefone recebido de volta (JID do WhatsApp, com/sem `+`,
+com/sem o 9º dígito) pra bater com o que está salvo em `users.phone`.
 
 Um n8n já roda em Docker nesta máquina (`docker ps` mostra o container `n8n`) — é o alvo
 natural para configurar um endpoint de teste.

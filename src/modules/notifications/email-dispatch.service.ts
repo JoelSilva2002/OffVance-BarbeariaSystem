@@ -1,22 +1,14 @@
-import { DateTime } from "luxon";
 import type { Notification, PaymentMethod } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { sendEmail } from "../../lib/email.js";
 import { getShopSettings } from "../scheduling/shop-settings.service.js";
+import { formatLocalDateTime, PAYMENT_METHOD_LABELS } from "./format.js";
 import {
   renderAppointmentReceiptEmail,
   renderAppointmentReminderEmail,
   renderOtpCodeEmail,
   type EmailContent,
 } from "./email-templates.js";
-
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  CASH: "Dinheiro",
-  CREDIT_CARD: "Cartão de crédito",
-  DEBIT_CARD: "Cartão de débito",
-  PIX: "Pix",
-  PACKAGE: "Pacote",
-};
 
 async function resolveRecipientEmail(notification: Notification): Promise<string | null> {
   if (!notification.clientId) return null;
@@ -39,10 +31,7 @@ async function renderContent(notification: Notification): Promise<EmailContent |
         getShopSettings(),
         prisma.barber.findUnique({ where: { id: payload.barberId as string } }),
       ]);
-      const startsAtLocal = DateTime.fromISO(payload.startsAt as string)
-        .setZone(settings.timezone)
-        .setLocale("pt-BR")
-        .toFormat("dd/MM 'às' HH:mm");
+      const startsAtLocal = formatLocalDateTime(payload.startsAt as string, settings.timezone);
       return renderAppointmentReminderEmail({
         code: payload.code as string,
         startsAtLocal,
