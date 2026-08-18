@@ -6,6 +6,12 @@ const OTP_TTL_MIN = 5;
 const OTP_LENGTH = 6;
 const MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SEC = 30;
+// Sem WhatsApp real, pedir código nunca custou nada além de uma linha no
+// banco — com Evolution no ar, cada um vira mensagem de verdade saindo do
+// número da barbearia. O cooldown de 30s acima já limita a CADÊNCIA por
+// telefone; isto limita o VOLUME por telefone por dia (defesa complementar
+// ao limite por IP, que mora na rota — ver auth.routes.ts).
+const MAX_REQUESTS_PER_DAY = 10;
 
 function generateCode(): string {
   return String(randomInt(0, 10 ** OTP_LENGTH)).padStart(OTP_LENGTH, "0");
@@ -23,6 +29,13 @@ export async function requestOtp(phone: string) {
   });
   if (recent) {
     throw new Problem(429, "OTP_RATE_LIMITED", `Aguarde ${RESEND_COOLDOWN_SEC}s antes de pedir um novo código.`);
+  }
+
+  const requestsToday = await prisma.otpCode.count({
+    where: { phone, createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) } },
+  });
+  if (requestsToday >= MAX_REQUESTS_PER_DAY) {
+    throw new Problem(429, "OTP_DAILY_LIMIT", "Limite de códigos por dia atingido para este telefone. Tente de novo amanhã.");
   }
 
   const code = generateCode();

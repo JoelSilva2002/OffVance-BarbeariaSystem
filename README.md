@@ -131,6 +131,14 @@ WhatsApp (em dev, a resposta inclui `devCode` fora de produção) → `POST /aut
 → access token de 30min + refresh token. `POST /auth/otp/refresh` rotaciona o par;
 `POST /auth/otp/logout` encerra a sessão atual. Rotas `/me/*`.
 
+Três camadas contra abuso no OTP — importa de verdade assim que existir WhatsApp de
+verdade do outro lado, porque cada pedido passa a ser mensagem real saindo do número da
+barbearia: cooldown de 30s por telefone entre pedidos (`OTP_RATE_LIMITED`), teto de 10
+pedidos por telefone a cada 24h (`OTP_DAILY_LIMIT`), e limite de 5 requisições/10min por
+IP em `/request` + 10/min em `/verify` (`RATE_LIMITED`) — mesma doutrina de duas camadas
+do login de equipe abaixo (IP pega ataque rápido de uma origem, telefone pega o lento e
+distribuído).
+
 **Equipe (`ADMIN`/`BARBER`):** `POST /auth/staff/login` (e-mail+senha) → mesmo par de
 tokens. `POST /auth/staff/refresh` e `POST /auth/staff/logout` — mesma mecânica.
 

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { env } from "../../config/env.js";
+import { Problem } from "../../lib/problem.js";
 import { requestOtpSchema, verifyOtpSchema, refreshTokenSchema } from "./otp.schema.js";
 import { requestOtp, verifyOtp } from "./otp.service.js";
 import { issueRefreshToken, revokeRefreshToken, rotateClientSession } from "./client-session.service.js";
@@ -10,30 +11,64 @@ import { issueRefreshToken, revokeRefreshToken, rotateClientSession } from "./cl
 const ACCESS_TOKEN_TTL = "30m";
 
 export async function authRoutes(app: FastifyInstance) {
-  app.post("/auth/otp/request", async (request, reply) => {
-    const body = requestOtpSchema.parse(request.body);
-    const { expiresAt, code } = await requestOtp(body.phone);
+  // Camada 1 (IP) complementa a camada 2 (por telefone, em otp.service.ts)
+  // — mesma doutrina de duas camadas do login de equipe (ver
+  // staff-auth.routes.ts): o limite por IP pega quem varre muitos números
+  // de um único lugar, o que o cooldown por telefone não enxerga.
+  app.post(
+    "/auth/otp/request",
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: "10 minutes",
+          errorResponseBuilder: (_request, context) =>
+            new Problem(
+              429,
+              "RATE_LIMITED",
+              `Muitas tentativas a partir deste endereço. Tente de novo em ${Math.ceil(context.ttl / 1000)}s.`,
+            ),
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = requestOtpSchema.parse(request.body);
+      const { expiresAt, code } = await requestOtp(body.phone);
 
-    reply.code(202).send({
-      message: "Código enviado por WhatsApp.",
-      expiresAt,
-      // Sem integração de WhatsApp real neste ambiente de dev, devolvemos o
-      // código para testar o fluxo ponta a ponta. Nunca em produção.
-      ...(env.NODE_ENV !== "production" ? { devCode: code } : {}),
-    });
-  });
+      reply.code(202).send({
+        message: "Código enviado por WhatsApp.",
+        expiresAt,
+        // Sem integração de WhatsApp real neste ambiente de dev, devolvemos o
+        // código para testar o fluxo ponta a ponta. Nunca em produção.
+        ...(env.NODE_ENV !== "production" ? { devCode: code } : {}),
+      });
+    },
+  );
 
-  app.post("/auth/otp/verify", async (request, reply) => {
-    const body = verifyOtpSchema.parse(request.body);
-    const { client } = await verifyOtp(body.phone, body.code);
+  app.post(
+    "/auth/otp/verify",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+          errorResponseBuilder: (_request, context) =>
+            new Problem(429, "RATE_LIMITED", `Muitas tentativas. Tente de novo em ${Math.ceil(context.ttl / 1000)}s.`),
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = verifyOtpSchema.parse(request.body);
+      const { client } = await verifyOtp(body.phone, body.code);
 
-    const accessToken = await reply.jwtSign(
-      { sub: client.id, userId: client.userId, role: "CLIENT" },
-      { expiresIn: ACCESS_TOKEN_TTL },
-    );
-    const refreshToken = await issueRefreshToken(client.userId);
-    reply.send({ accessToken, refreshToken, client });
-  });
+      const accessToken = await reply.jwtSign(
+        { sub: client.id, userId: client.userId, role: "CLIENT" },
+        { expiresIn: ACCESS_TOKEN_TTL },
+      );
+      const refreshToken = await issueRefreshToken(client.userId);
+      reply.send({ accessToken, refreshToken, client });
+    },
+  );
 
   app.post("/auth/otp/refresh", async (request, reply) => {
     const body = refreshTokenSchema.parse(request.body);
