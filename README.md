@@ -336,8 +336,13 @@ configurado — nenhuma variável de ambiente da API muda quando o provedor muda
 `src/lib/phone.ts` normaliza o telefone recebido de volta (JID do WhatsApp, com/sem `+`,
 com/sem o 9º dígito) pra bater com o que está salvo em `users.phone`.
 
-Um n8n já roda em Docker nesta máquina (`docker ps` mostra o container `n8n`) — é o alvo
-natural para configurar um endpoint de teste.
+**Setup completo (Evolution API self-hosted + workflow de saída pronto pra importar):**
+ver [`n8n/README.md`](n8n/README.md). Resumo: `docker compose --profile whatsapp up -d`
+sobe `n8n` + `evolution` num perfil próprio (não no `full`, pra não obrigar quem só quer
+testar a imagem da API a subir uma stack de WhatsApp junto); `n8n/workflows/*.json` tem o
+workflow de entrega pronto pra importar. Evolution é a escolha consciente de v1 — não
+oficial, sem verificação de negócio, risco de banimento aceito; trocar por outro provedor
+depois é mudar um nó HTTP no n8n, a API não muda uma linha.
 
 ## Notificações por e-mail (Resend)
 

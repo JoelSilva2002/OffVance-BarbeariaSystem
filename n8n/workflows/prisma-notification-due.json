@@ -1,0 +1,221 @@
+{
+  "name": "prisma-notification-due",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## prisma-notification-due (saída)\n\nRecebe `notification.due` da API e entrega por WhatsApp via Evolution.\n\n**Antes de ativar, confira à mão (README §Verificação manual):**\n1. \"Raw Body\" precisa estar LIGADO no nó Webhook — a assinatura é sobre os bytes exatos que a API mandou; corpo reparseado/reserializado não bate.\n2. O nome exato do campo com o id da mensagem na resposta do Evolution (`key.id` abaixo é um palpite razoável, não confirmado contra uma instância real) — abra o log de execução depois do primeiro envio de verdade e ajuste se precisar.\n3. Responder 200 ANTES de chamar o Evolution é proposital — não mexer na ordem (ver comentário no nó \"200 OK\").",
+        "height": 340,
+        "width": 420
+      },
+      "id": "note-1",
+      "name": "Leia antes de ativar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-200, 0]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prisma-notification-due",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "webhook",
+      "name": "Recebe evento",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [280, 0],
+      "webhookId": "prisma-notification-due"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Confere a assinatura HMAC (docs/ARQUITETURA.md §02 / src/lib/webhook-signature.ts):\n// sha256=HMAC(secret, timestamp + \".\" + corpo_cru). Usa o corpo CRU (Raw\n// Body ligado no nó Webhook) — o JSON reparseado pelo n8n não bate byte a\n// byte com o que a API assinou (ordem de chave, escape de unicode).\nconst crypto = require('crypto');\n\nconst binData = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst raw = await this.helpers.binaryToString(binData);\n\nconst headers = $input.first().json.headers || {};\nconst timestamp = headers['x-prisma-timestamp'];\nconst receivedSignature = headers['x-prisma-signature'];\nconst secret = $env.PRISMA_WEBHOOK_SECRET;\n\nconst expectedSignature = 'sha256=' + crypto\n  .createHmac('sha256', secret)\n  .update(`${timestamp}.${raw}`)\n  .digest('hex');\n\n// janela de 5min contra replay de uma entrega antiga reenviada\nconst isFresh = Boolean(timestamp) && Math.abs(Date.now() - Number(timestamp)) < 5 * 60 * 1000;\n\nlet signaturesMatch = false;\nif (receivedSignature && receivedSignature.length === expectedSignature.length) {\n  signaturesMatch = crypto.timingSafeEqual(Buffer.from(receivedSignature), Buffer.from(expectedSignature));\n}\n\nconst valid = isFresh && signaturesMatch;\nconst parsedBody = JSON.parse(raw);\n\nreturn [{ json: { valid, ...parsedBody } }];"
+      },
+      "id": "verify",
+      "name": "Verifica assinatura HMAC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid",
+      "name": "Assinatura válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"received\": true } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond-200",
+      "name": "200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, -120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"invalid signature\" } }}",
+        "options": { "responseCode": 401 }
+      },
+      "id": "respond-401",
+      "name": "401 assinatura inválida",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [940, 120]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-type",
+              "leftValue": "={{ $('Verifica assinatura HMAC').item.json.type }}",
+              "rightValue": "notification.due",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "cond-channel",
+              "leftValue": "={{ $('Verifica assinatura HMAC').item.json.data.channel }}",
+              "rightValue": "WHATSAPP",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-whatsapp",
+      "name": "É notification.due do WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1160, -160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "apikey", "value": "={{ $env.EVOLUTION_API_KEY }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"number\": $('Verifica assinatura HMAC').item.json.data.recipient.phone, \"text\": $('Verifica assinatura HMAC').item.json.data.message.text } }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "send-evolution",
+      "name": "Envia via Evolution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1380, -220],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-error",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "exists", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-send-failed",
+      "name": "Falhou o envio?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1600, -220]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.PRISMA_API_URL }}/notifications/{{ $('Verifica assinatura HMAC').item.json.data.notificationId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $env.PRISMA_API_KEY }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"status\": \"FAILED\" } }}",
+        "options": {}
+      },
+      "id": "report-failed",
+      "name": "Reporta falha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1820, -300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.PRISMA_API_URL }}/notifications/{{ $('Verifica assinatura HMAC').item.json.data.notificationId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Authorization", "value": "=Bearer {{ $env.PRISMA_API_KEY }}" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"providerMessageId\": String($json.key && $json.key.id || $json.id || 'evolution-ok') } }}",
+        "options": {}
+      },
+      "id": "report-sent",
+      "name": "Reporta sucesso",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1820, -140]
+    }
+  ],
+  "connections": {
+    "Recebe evento": { "main": [[{ "node": "Verifica assinatura HMAC", "type": "main", "index": 0 }]] },
+    "Verifica assinatura HMAC": { "main": [[{ "node": "Assinatura válida?", "type": "main", "index": 0 }]] },
+    "Assinatura válida?": {
+      "main": [
+        [{ "node": "200 OK", "type": "main", "index": 0 }],
+        [{ "node": "401 assinatura inválida", "type": "main", "index": 0 }]
+      ]
+    },
+    "200 OK": { "main": [[{ "node": "É notification.due do WhatsApp?", "type": "main", "index": 0 }]] },
+    "É notification.due do WhatsApp?": {
+      "main": [[{ "node": "Envia via Evolution", "type": "main", "index": 0 }]]
+    },
+    "Envia via Evolution": { "main": [[{ "node": "Falhou o envio?", "type": "main", "index": 0 }]] },
+    "Falhou o envio?": {
+      "main": [
+        [{ "node": "Reporta falha", "type": "main", "index": 0 }],
+        [{ "node": "Reporta sucesso", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
