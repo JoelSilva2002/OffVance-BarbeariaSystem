@@ -66,14 +66,32 @@ export function HomePage() {
       )}
 
       <section className="grid grid-cols-2 gap-3">
-        <Link to="/reservar">
-          <Card className="h-full transition-colors hover:border-primary/40">
+        {lastAppointment ? (
+          <Link
+            to="/reservar"
+            state={{
+              repeatOf: {
+                id: lastAppointment.id,
+                barberId: lastAppointment.barberId,
+                serviceIds: lastAppointment.items.map((item) => item.serviceId),
+              },
+            }}
+          >
+            <Card className="h-full transition-colors hover:border-primary/40">
+              <CardContent className="flex flex-col items-center gap-2 py-5 text-center">
+                <CalendarPlus className="size-5 text-primary" />
+                <span className="text-sm font-medium">Repetir último atendimento</span>
+              </CardContent>
+            </Card>
+          </Link>
+        ) : (
+          <Card className="h-full opacity-50">
             <CardContent className="flex flex-col items-center gap-2 py-5 text-center">
-              <CalendarPlus className="size-5 text-primary" />
-              <span className="text-sm font-medium">Repetir último atendimento</span>
+              <CalendarPlus className="size-5 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Repetir último atendimento</span>
             </CardContent>
           </Card>
-        </Link>
+        )}
 
         {/* sem link ainda — a subpágina de Fidelidade chega na Fase 6 */}
         <Card className="h-full">

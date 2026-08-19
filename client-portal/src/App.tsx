@@ -5,7 +5,7 @@ import { PhoneEntryPage } from "@/features/auth/PhoneEntryPage";
 import { CodeEntryPage } from "@/features/auth/CodeEntryPage";
 import { HomePage } from "@/features/home/HomePage";
 import { AppointmentsPage } from "@/features/appointments/AppointmentsPage";
-import { BookingEntryPage } from "@/features/booking/BookingEntryPage";
+import { BookingPage } from "@/features/booking/BookingPage";
 import { ProfilePage } from "@/features/profile/ProfilePage";
 
 export function App() {
@@ -13,6 +13,19 @@ export function App() {
     <Routes>
       <Route path="/entrar" element={<PhoneEntryPage />} />
       <Route path="/entrar/codigo" element={<CodeEntryPage />} />
+
+      {/* /reservar fica FORA do AppShell de propósito — o wizard tem sua
+          própria barra de ação fixa no rodapé (Continuar/Voltar/Confirmar),
+          que sobreporia a bottom tab bar se os dois competissem pelo mesmo
+          espaço fixo. Tela cheia durante o fluxo, sem a tab bar por baixo. */}
+      <Route
+        path="/reservar"
+        element={
+          <RequireAuth>
+            <BookingPage />
+          </RequireAuth>
+        }
+      />
 
       <Route
         element={
@@ -23,7 +36,6 @@ export function App() {
       >
         <Route index element={<HomePage />} />
         <Route path="/agendamentos" element={<AppointmentsPage />} />
-        <Route path="/reservar" element={<BookingEntryPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
       </Route>
 

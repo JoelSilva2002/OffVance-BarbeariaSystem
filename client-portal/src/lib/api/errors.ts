@@ -20,3 +20,8 @@ export class ApiError extends Error {
     this.detail = problem.detail;
   }
 }
+
+/** `detail` já vem pronto em português da API — não vale reescrever essa mensagem no front. */
+export function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? (error.detail ?? error.title) : fallback;
+}

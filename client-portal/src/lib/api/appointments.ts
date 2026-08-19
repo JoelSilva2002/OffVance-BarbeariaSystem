@@ -56,3 +56,21 @@ export function listMyAppointments(params: ListMyAppointmentsParams = {}) {
 export function getMyLastAppointment() {
   return apiRequest<{ appointment: Appointment | null }>("/me/appointments/last");
 }
+
+/**
+ * `startsAt` precisa ter offset (ISO com `Z` ou `+HH:mm`) — `Date#toISOString()`
+ * já cobre isso. Ou `barberId` + `serviceIds`, ou `repeatOf` (a API resolve
+ * barbeiro/serviços a partir do agendamento de origem quando não vierem
+ * explícitos — ver src/modules/portal/me.service.ts:74-100).
+ */
+export interface CreateMyAppointmentInput {
+  startsAt: string;
+  barberId?: string;
+  serviceIds?: string[];
+  clientNotes?: string;
+  repeatOf?: string;
+}
+
+export function createMyAppointment(input: CreateMyAppointmentInput) {
+  return apiRequest<Appointment>("/me/appointments", { method: "POST", body: input });
+}
