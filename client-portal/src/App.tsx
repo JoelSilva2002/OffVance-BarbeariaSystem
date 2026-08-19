@@ -1,14 +1,13 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "@/components/shared/RequireAuth";
+import { AppShell } from "@/components/layout/AppShell";
 import { PhoneEntryPage } from "@/features/auth/PhoneEntryPage";
 import { CodeEntryPage } from "@/features/auth/CodeEntryPage";
-import { HomePlaceholderPage } from "@/features/home/HomePlaceholderPage";
+import { HomePage } from "@/features/home/HomePage";
+import { AppointmentsPage } from "@/features/appointments/AppointmentsPage";
+import { BookingEntryPage } from "@/features/booking/BookingEntryPage";
+import { ProfilePage } from "@/features/profile/ProfilePage";
 
-/**
- * Rotas de verdade chegam na Fase 3 (shell mobile com bottom tab bar) — por
- * ora só o suficiente pra provar o login OTP ponta a ponta:
- * PhoneEntryPage -> CodeEntryPage -> área autenticada.
- */
 export function App() {
   return (
     <Routes>
@@ -16,13 +15,17 @@ export function App() {
       <Route path="/entrar/codigo" element={<CodeEntryPage />} />
 
       <Route
-        path="/"
         element={
           <RequireAuth>
-            <HomePlaceholderPage />
+            <AppShell />
           </RequireAuth>
         }
-      />
+      >
+        <Route index element={<HomePage />} />
+        <Route path="/agendamentos" element={<AppointmentsPage />} />
+        <Route path="/reservar" element={<BookingEntryPage />} />
+        <Route path="/perfil" element={<ProfilePage />} />
+      </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

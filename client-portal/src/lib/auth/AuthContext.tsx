@@ -52,9 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await verifyOtp(phone, code);
     tokenStore.set(data.refreshToken);
     authSession.set({ accessToken: data.accessToken });
-    // seed inicial da query ["me"] — a Home renderiza o nome sem esperar
-    // outro round-trip; useQuery(["me"]) revalida sozinho depois.
-    queryClient.setQueryData(["me"], data.client);
+    // Nada de semear a query ["me"] com `data.client` aqui — o shape que
+    // POST /auth/otp/verify devolve (Client cru, sem `user` aninhado) é
+    // diferente do que GET /me devolve (Client & { user }), que é o que
+    // useQuery(["me"], getMe) espera em todo o resto do app. Semear com o
+    // shape errado sob a mesma chave já quebrou em produção local: a
+    // primeira tela a montar via essa chave lia `me.user.phone` e estourava,
+    // porque o cache tinha o objeto errado até o refetch de verdade chegar.
     return data.client;
   }
 
