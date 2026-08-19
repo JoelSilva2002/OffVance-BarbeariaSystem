@@ -1,16 +1,30 @@
-import { Button } from "@/components/ui/button";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { RequireAuth } from "@/components/shared/RequireAuth";
+import { PhoneEntryPage } from "@/features/auth/PhoneEntryPage";
+import { CodeEntryPage } from "@/features/auth/CodeEntryPage";
+import { HomePlaceholderPage } from "@/features/home/HomePlaceholderPage";
 
 /**
- * Placeholder da Fase 1 (scaffold) — só confirma que o tema/tokens estão
- * aplicados corretamente antes de entrar roteamento, auth e as telas de
- * verdade nas fases seguintes.
+ * Rotas de verdade chegam na Fase 3 (shell mobile com bottom tab bar) — por
+ * ora só o suficiente pra provar o login OTP ponta a ponta:
+ * PhoneEntryPage -> CodeEntryPage -> área autenticada.
  */
 export function App() {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
-      <h1 className="font-[family-name:var(--font-display)] text-3xl text-primary">Prisma</h1>
-      <p className="text-muted-foreground">Portal do cliente — em construção.</p>
-      <Button>Entrar</Button>
-    </div>
+    <Routes>
+      <Route path="/entrar" element={<PhoneEntryPage />} />
+      <Route path="/entrar/codigo" element={<CodeEntryPage />} />
+
+      <Route
+        path="/"
+        element={
+          <RequireAuth>
+            <HomePlaceholderPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
