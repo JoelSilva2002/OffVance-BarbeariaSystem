@@ -152,6 +152,34 @@ export function requireAdminOrApiKey(...requiredScopes: ApiKeyScope[]) {
 }
 
 /**
+ * Verificação "macia" de identidade de equipe — nunca lança, devolve
+ * `false` pra qualquer token ausente/inválido/de cliente. Usada só pelas
+ * duas rotas GET públicas de `/barbers` (listagem/detalhe) pra decidir se
+ * `commissionPct` (comissão do barbeiro — dado sensível de negócio) entra
+ * na resposta: o mesmo endpoint público serve o painel de equipe
+ * (autenticado, precisa do valor pra editar — não existe rota staff-only
+ * equivalente) e o portal do cliente (anônimo, não pode ver).
+ */
+export async function tryResolveStaffIdentity(request: FastifyRequest): Promise<boolean> {
+  const token = extractBearerToken(request);
+  if (!token) return false;
+
+  if (isApiKeyFormat(token)) {
+    const apiKey = await prisma.apiKey.findUnique({ where: { keyHash: hashApiKey(token) } });
+    if (!apiKey || !apiKey.active) return false;
+    if (apiKey.expiresAt && apiKey.expiresAt < new Date()) return false;
+    return apiKey.scopes.includes("barbers:read");
+  }
+
+  try {
+    const payload = await request.jwtVerify<StaffTokenPayload>();
+    return payload.role === "ADMIN" || payload.role === "BARBER";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Identidade normalizada de "quem age", independente de ter vindo de sessão
  * de equipe ou de API key — usada onde uma rota (hoje: agendamentos) aceita
  * os dois caminhos e precisa de UMA resposta pra "quem é o ator" e "esse

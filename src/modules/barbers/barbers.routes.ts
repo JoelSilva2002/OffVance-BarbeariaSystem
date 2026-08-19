@@ -1,5 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { assertActingScope, requireAdminAuth, requireStaffOrApiKey, resolveActingIdentity } from "../../plugins/auth.js";
+import {
+  assertActingScope,
+  requireAdminAuth,
+  requireStaffOrApiKey,
+  resolveActingIdentity,
+  tryResolveStaffIdentity,
+} from "../../plugins/auth.js";
 import {
   agendaQuerySchema,
   createBarberSchema,
@@ -22,16 +28,32 @@ import {
   updateBarber,
 } from "./barbers.service.js";
 
+/**
+ * `commissionPct` (comissão do barbeiro) é dado sensível de negócio — não
+ * pode ir pra fora nas duas rotas GET públicas abaixo. `tryResolveStaffIdentity`
+ * decide, por requisição, se quem está chamando é o painel de equipe
+ * (mantém o campo, precisa dele pra editar) ou o portal do cliente/qualquer
+ * chamador anônimo (perde o campo).
+ */
+function stripCommission<T extends { commissionPct: unknown }>(barber: T): Omit<T, "commissionPct"> {
+  const { commissionPct: _commissionPct, ...rest } = barber;
+  return rest;
+}
+
 export async function barbersRoutes(app: FastifyInstance) {
   // Listagem/detalhe ficam públicos — o portal do cliente usa isso para
   // escolher barbeiro no fluxo de agendamento.
   app.get("/barbers", async (request) => {
     const query = listBarbersQuerySchema.parse(request.query);
-    return { barbers: await listBarbers(query.status, query.serviceId) };
+    const barbers = await listBarbers(query.status, query.serviceId);
+    const isStaff = await tryResolveStaffIdentity(request);
+    return { barbers: isStaff ? barbers : barbers.map(stripCommission) };
   });
 
   app.get<{ Params: { id: string } }>("/barbers/:id", async (request) => {
-    return getBarber(request.params.id);
+    const barber = await getBarber(request.params.id);
+    const isStaff = await tryResolveStaffIdentity(request);
+    return isStaff ? barber : stripCommission(barber);
   });
 
   // Criar/editar/remover colaborador (cria credencial de login) e definir

@@ -5,8 +5,16 @@ import { createAppointment } from "../appointments/appointments.service.js";
 import { cancelAppointment, rescheduleAppointment } from "../appointments/lifecycle.service.js";
 import type { CreateMyAppointmentInput, UpdateMeInput } from "./me.schema.js";
 
+// select explícito, nunca `include: { user: true }` — o model User carrega
+// passwordHash/failedLoginAttempts/lockedUntil, e isto é a resposta que o
+// portal do cliente devolve direto pra tela de Perfil.
+const SAFE_USER_SELECT = { id: true, phone: true, email: true } as const;
+
 export async function getMe(clientId: string) {
-  const client = await prisma.client.findUnique({ where: { id: clientId }, include: { user: true } });
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    include: { user: { select: SAFE_USER_SELECT } },
+  });
   if (!client) throw new Problem(404, "CLIENT_NOT_FOUND", "Cliente não encontrado.");
   return client;
 }
@@ -34,7 +42,7 @@ export async function updateMe(clientId: string, input: UpdateMeInput) {
       allergyNotes: input.allergyNotes,
       hairNotes: input.hairNotes,
     },
-    include: { user: true },
+    include: { user: { select: SAFE_USER_SELECT } },
   });
 }
 
@@ -42,7 +50,9 @@ export async function listMyAppointments(clientId: string, scope: "upcoming" | "
   const now = new Date();
   return prisma.appointment.findMany({
     where: { clientId, startsAt: scope === "upcoming" ? { gte: now } : { lt: now } },
-    include: { items: true },
+    // `review` aditivo — é o que deixa o portal saber, sem N chamadas
+    // extras, quais CONCLUIDO já foram avaliados (null = ainda não).
+    include: { items: true, review: true },
     orderBy: { startsAt: scope === "upcoming" ? "asc" : "desc" },
     take: limit,
   });
@@ -51,7 +61,7 @@ export async function listMyAppointments(clientId: string, scope: "upcoming" | "
 export async function getMyLastAppointment(clientId: string) {
   return prisma.appointment.findFirst({
     where: { clientId, status: "CONCLUIDO" },
-    include: { items: true },
+    include: { items: true, review: true },
     orderBy: { startsAt: "desc" },
   });
 }
