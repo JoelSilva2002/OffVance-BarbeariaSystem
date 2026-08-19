@@ -1,0 +1,123 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Fraunces (títulos/wordmark), Instrument Sans (corpo) e IBM Plex Mono
+   (valores/código) são carregadas via <link> em index.html, não @import
+   aqui — um @import de fonte depois de `@import "tailwindcss"` é
+   descartado pelo navegador (import precisa vir antes de qualquer outra
+   regra, e o Tailwind se expande em várias).
+
+   Mesma paleta do painel de equipe (frontend/src/index.css) — mesma marca,
+   mesma barbearia. Reaproveitar em vez de criar uma paleta nova mantém a
+   identidade visual consistente entre os dois apps. */
+
+:root {
+  color-scheme: dark;
+  --radius: 0.5rem;
+
+  /* Fundo/superfície — marrom-preto quente, nunca preto puro. */
+  --background: #16130f;
+  --foreground: #f2ede4;
+
+  --card: #1e1a15;
+  --card-foreground: #f2ede4;
+
+  --popover: #26211a;
+  --popover-foreground: #f2ede4;
+
+  /* Latão envelhecido — o único acento do sistema. */
+  --primary: #c9a961;
+  --primary-foreground: #16130f;
+
+  --secondary: #26211a;
+  --secondary-foreground: #f2ede4;
+
+  --muted: #1e1a15;
+  --muted-foreground: #a89b87;
+
+  --accent: #26211a;
+  --accent-foreground: #f2ede4;
+
+  /* Único vermelho do sistema — reservado pra erro/ação destrutiva de verdade. */
+  --destructive: #b25a45;
+  --destructive-foreground: #f2ede4;
+
+  --border: #3a332a;
+  --input: #3a332a;
+  --ring: #c9a961;
+
+  /* Mesma rampa semântica de status de agendamento do painel de equipe —
+     sempre dessaturada, nunca neon em fundo escuro. */
+  --status-scheduled: #7c8b99;
+  --status-confirmed: #6fa8a0;
+  --status-active: #c9a961;
+  --status-done: #7fa66b;
+  --status-cancelled: #8c7a6b;
+  --status-noshow: #b25a45;
+
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-scheduled: var(--status-scheduled);
+  --color-status-confirmed: var(--status-confirmed);
+  --color-status-active: var(--status-active);
+  --color-status-done: var(--status-done);
+  --color-status-cancelled: var(--status-cancelled);
+  --color-status-noshow: var(--status-noshow);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-feature-settings: "tnum" 1;
+    -webkit-font-smoothing: antialiased;
+    /* evita bounce/overscroll de página inteira em iOS — o app tem seu
+       próprio scroll por seção, não a página toda */
+    overscroll-behavior-y: none;
+  }
+}
+
+@layer utilities {
+  /* área segura de dispositivos com notch/home indicator — usado pela
+     bottom tab bar (AppShell) pra não ficar embaixo do gesto de home */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

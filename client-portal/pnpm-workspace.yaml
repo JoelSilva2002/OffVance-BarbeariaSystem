@@ -1,0 +1,5 @@
+# Arquivo vazio de propósito — marca este diretório como raiz do SEU
+# PRÓPRIO workspace pnpm, isolado do pnpm-workspace.yaml da API na raiz do
+# repo (que só configura allowBuilds, não é um monorepo de verdade) e do
+# workspace de frontend/. Sem isso, o pnpm "engole" este projeto pro
+# workspace do pai e o install não faz nada de útil aqui.
