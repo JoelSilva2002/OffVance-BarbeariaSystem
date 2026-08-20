@@ -6,6 +6,12 @@ const TEST_DATABASE_URL = "postgresql://prisma:prisma@localhost:5432/projeto_pri
 
 export default defineConfig({
   test: {
+    // Sem isso, o glob padrão do vitest também varre frontend/ e
+    // client-portal/ (cada um com seu próprio vitest.config.ts, alias @/ e
+    // ambiente jsdom, nunca aplicados quando importados daqui) — rodar
+    // `pnpm test` na raiz tentava executar os testes de frontend sem a
+    // config deles e falhava.
+    include: ["tests/**/*.test.ts"],
     env: {
       DATABASE_URL: TEST_DATABASE_URL,
       JWT_SECRET: "test-jwt-secret-nao-usar-em-producao-0000",
