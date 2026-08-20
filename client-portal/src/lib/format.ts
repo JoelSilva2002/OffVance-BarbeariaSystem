@@ -17,6 +17,11 @@ export function formatDateLabel(iso: string): string {
   return DateTime.fromISO(iso, { zone: "utc" }).setZone(SHOP_TIMEZONE).setLocale("pt-BR").toFormat("EEE, dd/MM");
 }
 
+/** Sem hora — validade de pacote, data de compra: hora do dia não é informação útil aqui. */
+export function formatDate(iso: string): string {
+  return DateTime.fromISO(iso, { zone: "utc" }).setZone(SHOP_TIMEZONE).setLocale("pt-BR").toFormat("dd/MM/yyyy");
+}
+
 export function formatTime(iso: string): string {
   return DateTime.fromISO(iso, { zone: "utc" }).setZone(SHOP_TIMEZONE).toFormat("HH:mm");
 }

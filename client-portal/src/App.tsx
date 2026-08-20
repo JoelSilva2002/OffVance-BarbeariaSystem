@@ -8,6 +8,8 @@ import { AppointmentsPage } from "@/features/appointments/AppointmentsPage";
 import { BookingPage } from "@/features/booking/BookingPage";
 import { ReschedulePage } from "@/features/appointments/ReschedulePage";
 import { ProfilePage } from "@/features/profile/ProfilePage";
+import { LoyaltyPage } from "@/features/profile/LoyaltyPage";
+import { PackagesPage } from "@/features/profile/PackagesPage";
 
 export function App() {
   return (
@@ -47,6 +49,8 @@ export function App() {
         <Route index element={<HomePage />} />
         <Route path="/agendamentos" element={<AppointmentsPage />} />
         <Route path="/perfil" element={<ProfilePage />} />
+        <Route path="/perfil/fidelidade" element={<LoyaltyPage />} />
+        <Route path="/perfil/pacotes" element={<PackagesPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

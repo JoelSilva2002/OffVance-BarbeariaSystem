@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppointmentCard } from "@/components/shared/AppointmentCard";
 import { AppointmentDetailDrawer } from "@/components/shared/AppointmentDetailDrawer";
+import { ReviewSheet } from "@/features/reviews/ReviewSheet";
 import { listMyAppointments, type Appointment } from "@/lib/api/appointments";
 
 function AppointmentsList({ scope, onSelect }: { scope: "upcoming" | "past"; onSelect: (a: Appointment) => void }) {
@@ -41,6 +42,7 @@ function AppointmentsList({ scope, onSelect }: { scope: "upcoming" | "past"; onS
 
 export function AppointmentsPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -63,7 +65,8 @@ export function AppointmentsPage() {
         </TabsContent>
       </Tabs>
 
-      <AppointmentDetailDrawer appointment={selected} onClose={() => setSelected(null)} />
+      <AppointmentDetailDrawer appointment={selected} onClose={() => setSelected(null)} onReview={setReviewingId} />
+      <ReviewSheet appointmentId={reviewingId} onClose={() => setReviewingId(null)} />
     </div>
   );
 }

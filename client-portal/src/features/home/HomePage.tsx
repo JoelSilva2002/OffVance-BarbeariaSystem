@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppointmentCard } from "@/components/shared/AppointmentCard";
 import { AppointmentDetailDrawer } from "@/components/shared/AppointmentDetailDrawer";
+import { ReviewSheet } from "@/features/reviews/ReviewSheet";
 import { getMe } from "@/lib/api/me";
 import { listMyAppointments, getMyLastAppointment, type Appointment } from "@/lib/api/appointments";
 import { getLoyaltySummary } from "@/lib/api/loyalty";
 
 export function HomePage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
 
   const { data: upcomingData, isLoading: isLoadingUpcoming } = useQuery({
@@ -57,15 +59,17 @@ export function HomePage() {
       </section>
 
       {lastAppointment && !lastAppointment.review && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardContent className="flex items-center gap-3">
-            <Star className="size-5 shrink-0 text-primary" />
-            <div className="flex-1">
-              <p className="text-sm font-medium">Como foi seu último atendimento?</p>
-              <p className="text-xs text-muted-foreground">A avaliação chega em breve por aqui.</p>
-            </div>
-          </CardContent>
-        </Card>
+        <button onClick={() => setReviewingId(lastAppointment.id)} className="text-left">
+          <Card className="border-primary/30 bg-primary/5 transition-colors hover:border-primary/50">
+            <CardContent className="flex items-center gap-3">
+              <Star className="size-5 shrink-0 text-primary" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Como foi seu último atendimento?</p>
+                <p className="text-xs text-muted-foreground">Toque para avaliar.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </button>
       )}
 
       <section className="grid grid-cols-2 gap-3">
@@ -96,18 +100,20 @@ export function HomePage() {
           </Card>
         )}
 
-        {/* sem link ainda — a subpágina de Fidelidade chega na Fase 6 */}
-        <Card className="h-full">
-          <CardContent className="flex flex-col items-center gap-2 py-5 text-center">
-            <span className="font-[family-name:var(--font-display)] text-2xl text-primary">
-              {loyalty?.balance ?? "–"}
-            </span>
-            <span className="text-sm font-medium">Pontos de fidelidade</span>
-          </CardContent>
-        </Card>
+        <Link to="/perfil/fidelidade">
+          <Card className="h-full transition-colors hover:border-primary/40">
+            <CardContent className="flex flex-col items-center gap-2 py-5 text-center">
+              <span className="font-[family-name:var(--font-display)] text-2xl text-primary">
+                {loyalty?.balance ?? "–"}
+              </span>
+              <span className="text-sm font-medium">Pontos de fidelidade</span>
+            </CardContent>
+          </Card>
+        </Link>
       </section>
 
-      <AppointmentDetailDrawer appointment={selected} onClose={() => setSelected(null)} />
+      <AppointmentDetailDrawer appointment={selected} onClose={() => setSelected(null)} onReview={setReviewingId} />
+      <ReviewSheet appointmentId={reviewingId} onClose={() => setReviewingId(null)} />
     </div>
   );
 }

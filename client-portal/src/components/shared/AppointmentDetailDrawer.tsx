@@ -34,9 +34,12 @@ const ACTIONABLE_STATUSES = new Set(["AGENDADO", "CONFIRMADO"]);
 export function AppointmentDetailDrawer({
   appointment,
   onClose,
+  onReview,
 }: {
   appointment: Appointment | null;
   onClose: () => void;
+  /** CONCLUIDO sem review ainda — abre o ReviewSheet (gerenciado pela página, não aqui). */
+  onReview: (appointmentId: string) => void;
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -53,6 +56,7 @@ export function AppointmentDetailDrawer({
   if (!appointment) return null;
 
   const canAct = ACTIONABLE_STATUSES.has(appointment.status);
+  const canReview = appointment.status === "CONCLUIDO" && !appointment.review;
   const serviceNames = appointment.items.map((item) => item.nameSnapshot).join(", ");
 
   async function handleCancel(event: MouseEvent) {
@@ -159,6 +163,19 @@ export function AppointmentDetailDrawer({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          </DrawerFooter>
+        )}
+
+        {canReview && (
+          <DrawerFooter>
+            <Button
+              onClick={() => {
+                onReview(appointment.id);
+                onClose();
+              }}
+            >
+              Avaliar atendimento
+            </Button>
           </DrawerFooter>
         )}
       </DrawerContent>
