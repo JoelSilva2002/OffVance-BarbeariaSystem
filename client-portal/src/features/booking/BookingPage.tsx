@@ -47,7 +47,9 @@ export function BookingPage() {
 
   switch (step) {
     case 1:
-      return <ServiceStep selection={selection} onChange={updateSelection} onNext={() => setStep(2)} />;
+      return (
+        <ServiceStep selection={selection} onChange={updateSelection} onNext={() => setStep(2)} onBack={goBack} />
+      );
     case 2:
       return (
         <BarberStep selection={selection} onChange={updateSelection} onNext={() => setStep(3)} onBack={goBack} />

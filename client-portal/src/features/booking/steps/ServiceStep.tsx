@@ -10,10 +10,12 @@ export function ServiceStep({
   selection,
   onChange,
   onNext,
+  onBack,
 }: {
   selection: BookingSelection;
   onChange: (next: Partial<BookingSelection>) => void;
   onNext: () => void;
+  onBack: () => void;
 }) {
   const { data: categoriesData, isLoading: isLoadingCategories } = useQuery({
     queryKey: ["service-categories"],
@@ -77,17 +79,22 @@ export function ServiceStep({
         })
       )}
 
-      {selectedServices.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-border bg-card p-4 pb-safe">
-          <div className="mx-auto flex max-w-md items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">{formatMoney(totalCents)}</p>
-              <p className="text-xs text-muted-foreground">{totalMin} min</p>
+      <div className="fixed inset-x-0 bottom-0 border-t border-border bg-card p-4 pb-safe">
+        <div className="mx-auto flex max-w-md items-center justify-between gap-3">
+          <Button variant="outline" onClick={onBack}>
+            Voltar
+          </Button>
+          {selectedServices.length > 0 && (
+            <div className="flex flex-1 items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">{formatMoney(totalCents)}</p>
+                <p className="text-xs text-muted-foreground">{totalMin} min</p>
+              </div>
+              <Button onClick={onNext}>Continuar</Button>
             </div>
-            <Button onClick={onNext}>Continuar</Button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
