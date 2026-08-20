@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { CalendarPlus, Star } from "lucide-react";
@@ -5,11 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppointmentCard } from "@/components/shared/AppointmentCard";
+import { AppointmentDetailDrawer } from "@/components/shared/AppointmentDetailDrawer";
 import { getMe } from "@/lib/api/me";
-import { listMyAppointments, getMyLastAppointment } from "@/lib/api/appointments";
+import { listMyAppointments, getMyLastAppointment, type Appointment } from "@/lib/api/appointments";
 import { getLoyaltySummary } from "@/lib/api/loyalty";
 
 export function HomePage() {
+  const [selected, setSelected] = useState<Appointment | null>(null);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: getMe });
 
   const { data: upcomingData, isLoading: isLoadingUpcoming } = useQuery({
@@ -37,7 +40,7 @@ export function HomePage() {
         {isLoadingUpcoming ? (
           <Skeleton className="h-24 w-full rounded-xl" />
         ) : nextAppointment ? (
-          <AppointmentCard appointment={nextAppointment} />
+          <AppointmentCard appointment={nextAppointment} onClick={() => setSelected(nextAppointment)} />
         ) : (
           <Card>
             <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
@@ -103,6 +106,8 @@ export function HomePage() {
           </CardContent>
         </Card>
       </section>
+
+      <AppointmentDetailDrawer appointment={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

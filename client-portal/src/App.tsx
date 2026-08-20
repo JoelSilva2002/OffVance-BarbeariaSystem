@@ -6,6 +6,7 @@ import { CodeEntryPage } from "@/features/auth/CodeEntryPage";
 import { HomePage } from "@/features/home/HomePage";
 import { AppointmentsPage } from "@/features/appointments/AppointmentsPage";
 import { BookingPage } from "@/features/booking/BookingPage";
+import { ReschedulePage } from "@/features/appointments/ReschedulePage";
 import { ProfilePage } from "@/features/profile/ProfilePage";
 
 export function App() {
@@ -23,6 +24,15 @@ export function App() {
         element={
           <RequireAuth>
             <BookingPage />
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/agendamentos/:id/remarcar"
+        element={
+          <RequireAuth>
+            <ReschedulePage />
           </RequireAuth>
         }
       />

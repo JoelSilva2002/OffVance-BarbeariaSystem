@@ -74,3 +74,16 @@ export interface CreateMyAppointmentInput {
 export function createMyAppointment(input: CreateMyAppointmentInput) {
   return apiRequest<Appointment>("/me/appointments", { method: "POST", body: input });
 }
+
+export function cancelMyAppointment(id: string, reason?: string) {
+  return apiRequest<Appointment>(`/me/appointments/${id}/cancel`, { method: "POST", body: { reason } });
+}
+
+export interface RescheduleMyAppointmentInput {
+  startsAt: string;
+  barberId?: string;
+}
+
+export function rescheduleMyAppointment(id: string, input: RescheduleMyAppointmentInput) {
+  return apiRequest<Appointment>(`/me/appointments/${id}/reschedule`, { method: "POST", body: input });
+}

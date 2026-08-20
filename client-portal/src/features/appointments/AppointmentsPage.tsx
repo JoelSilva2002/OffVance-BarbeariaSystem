@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppointmentCard } from "@/components/shared/AppointmentCard";
-import { listMyAppointments } from "@/lib/api/appointments";
+import { AppointmentDetailDrawer } from "@/components/shared/AppointmentDetailDrawer";
+import { listMyAppointments, type Appointment } from "@/lib/api/appointments";
 
-function AppointmentsList({ scope }: { scope: "upcoming" | "past" }) {
+function AppointmentsList({ scope, onSelect }: { scope: "upcoming" | "past"; onSelect: (a: Appointment) => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ["me", "appointments", scope],
     queryFn: () => listMyAppointments({ scope, limit: 50 }),
@@ -31,14 +33,15 @@ function AppointmentsList({ scope }: { scope: "upcoming" | "past" }) {
   return (
     <div className="flex flex-col gap-3">
       {appointments.map((appointment) => (
-        // detalhe/ações (cancelar, remarcar, avaliar) chegam nas Fases 5 e 6
-        <AppointmentCard key={appointment.id} appointment={appointment} />
+        <AppointmentCard key={appointment.id} appointment={appointment} onClick={() => onSelect(appointment)} />
       ))}
     </div>
   );
 }
 
 export function AppointmentsPage() {
+  const [selected, setSelected] = useState<Appointment | null>(null);
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <h1 className="font-[family-name:var(--font-display)] text-2xl text-primary">Agendamentos</h1>
@@ -53,12 +56,14 @@ export function AppointmentsPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="upcoming" className="mt-4">
-          <AppointmentsList scope="upcoming" />
+          <AppointmentsList scope="upcoming" onSelect={setSelected} />
         </TabsContent>
         <TabsContent value="past" className="mt-4">
-          <AppointmentsList scope="past" />
+          <AppointmentsList scope="past" onSelect={setSelected} />
         </TabsContent>
       </Tabs>
+
+      <AppointmentDetailDrawer appointment={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
