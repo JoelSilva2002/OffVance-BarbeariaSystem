@@ -78,3 +78,33 @@ jobs:
 
       # `tsc -b && vite build` — typecheck e build de produção num passo só.
       - run: pnpm build
+
+  client-portal:
+    runs-on: ubuntu-latest
+
+    # Mesmo isolamento do job frontend, projeto próprio (client-portal/pnpm-workspace.yaml).
+    defaults:
+      run:
+        working-directory: client-portal
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client-portal/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      # frontend/ não tem este passo porque não tem testes — client-portal
+      # ganhou desde o início (Fase 7 do plano): é o primeiro contato do
+      # cliente final, cobre o fluxo que gera receita da loja, e não tem
+      # ninguém por perto pra notar uma regressão silenciosa além do
+      # cliente frustrado indo pra concorrência.
+      - run: pnpm test
