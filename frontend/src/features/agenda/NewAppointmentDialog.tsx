@@ -141,7 +141,7 @@ export function NewAppointmentDialog({ open, onOpenChange }: { open: boolean; on
                   setBarberMode(e.target.value);
                   setSelectedSlot(null);
                 }}
-                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+                className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
               >
                 <option value="any">Qualquer barbeiro disponível</option>
                 {barbersQuery.data?.barbers.map((barber) => (

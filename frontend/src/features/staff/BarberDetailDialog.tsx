@@ -100,7 +100,7 @@ function ProfileTab({ barber }: { barber: BarberWithServices }) {
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as "ACTIVE" | "INACTIVE")}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+          className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
         >
           <option value="ACTIVE">Ativo</option>
           <option value="INACTIVE">Inativo</option>

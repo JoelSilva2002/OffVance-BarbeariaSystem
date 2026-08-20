@@ -65,7 +65,7 @@ export function SellPackageDialog({
             <select
               value={packageId}
               onChange={(e) => setPackageId(e.target.value)}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+              className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
             >
               {packages.map((pkg) => (
                 <option key={pkg.id} value={pkg.id}>
@@ -80,7 +80,7 @@ export function SellPackageDialog({
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value as typeof method)}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+              className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
             >
               <option value="CASH">Dinheiro</option>
               <option value="CREDIT_CARD">Cartão de crédito</option>

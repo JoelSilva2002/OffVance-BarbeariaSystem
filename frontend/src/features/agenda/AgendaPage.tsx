@@ -55,7 +55,7 @@ export function AgendaPage() {
           <select
             value={barberId}
             onChange={(e) => setBarberId(e.target.value)}
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+            className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
           >
             <option value="">Todos os barbeiros</option>
             {barbersQuery.data?.barbers.map((barber) => (

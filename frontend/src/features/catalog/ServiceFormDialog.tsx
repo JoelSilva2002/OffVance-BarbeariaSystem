@@ -80,7 +80,7 @@ export function ServiceFormDialog({
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
               required
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+              className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
             >
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>

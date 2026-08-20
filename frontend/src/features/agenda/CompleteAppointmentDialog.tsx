@@ -102,7 +102,7 @@ export function CompleteAppointmentDialog({
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value as CompletionPayment["method"])}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+              className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
             >
               {Object.entries(METHOD_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -123,7 +123,7 @@ export function CompleteAppointmentDialog({
                 <select
                   value={clientPackageId}
                   onChange={(e) => setClientPackageId(e.target.value)}
-                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+                  className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
                 >
                   <option value="">Selecione…</option>
                   {usablePackages.map((pkg) => (

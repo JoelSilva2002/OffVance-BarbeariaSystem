@@ -111,7 +111,7 @@ export function NewOrderDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value as CreateOrderInput["method"])}
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground"
+              className="h-9 rounded-md border border-input bg-popover px-3 text-sm text-foreground"
             >
               <option value="CASH">Dinheiro</option>
               <option value="CREDIT_CARD">Cartão de crédito</option>
